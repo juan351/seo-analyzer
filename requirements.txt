@@ -24,3 +24,7 @@ asyncio==3.4.3
 lxml==4.9.3
 urllib3==2.1.0
 chromedriver-autoinstaller==0.6.4
+langdetect==1.0.9
+polyglot==16.7.4
+textstat==0.7.3
+spacy-langdetect==0.1.2

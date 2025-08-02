@@ -13,7 +13,20 @@ from .services.backlink_analyzer import BacklinkAnalyzer
 from .services.performance_analyzer import PerformanceAnalyzer
 from .utils.cache import CacheManager
 from .utils.helpers import validate_request, handle_error
+from functools import wraps
+from .services.content_analyzer import MultilingualContentAnalyzer
+from .services.serp_scraper import MultilingualSerpScraper
+from .utils.language_detector import LanguageDetector
+load_dotenv()
 
+def require_api_key(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        api_key = request.headers.get('X-API-KEY') or request.args.get('api_key')
+        if not api_key or api_key != API_KEY:
+            return jsonify({'error': 'Invalid or missing API key'}), 401
+        return f(*args, **kwargs)
+    return decorated
 load_dotenv()
 
 app = Flask(__name__)
@@ -36,65 +49,19 @@ logger = logging.getLogger(__name__)
 
 # Inicializar servicios
 cache_manager = CacheManager()
-serp_scraper = SerpScraper(cache_manager)
-content_analyzer = ContentAnalyzer(cache_manager)
 backlink_analyzer = BacklinkAnalyzer(cache_manager)
 performance_analyzer = PerformanceAnalyzer()
 
-def require_api_key(f):
-    """Decorador para validar API key"""
-    def decorated_function(*args, **kwargs):
-        provided_key = request.headers.get('X-API-Key')
-        if provided_key != API_KEY:
-            return jsonify({'error': 'Invalid API key'}), 401
-        return f(*args, **kwargs)
-    decorated_function.__name__ = f.__name__
-    return decorated_function
-
-@app.route('/', methods=['GET'])
-def health_check():
-    return jsonify({
-        'status': 'healthy',
-        'timestamp': datetime.now().isoformat(),
-        'version': '1.0.0'
-    })
-
-@app.route('/serp/search', methods=['POST'])
-@limiter.limit("10 per minute")
-@require_api_key
-def search_serp():
-    """Obtener resultados SERP para keywords"""
-    try:
-        data = request.get_json()
-        
-        if not validate_request(data, ['keywords']):
-            return jsonify({'error': 'Missing required fields'}), 400
-        
-        keywords = data['keywords']
-        location = data.get('location', 'US')
-        pages = min(data.get('pages', 1), 3)  # Máximo 3 páginas
-        
-        results = {}
-        for keyword in keywords:
-            logger.info(f"Scraping SERP for keyword: {keyword}")
-            serp_data = serp_scraper.get_serp_results(keyword, location, pages)
-            results[keyword] = serp_data
-        
-        return jsonify({
-            'success': True,
-            'data': results,
-            'timestamp': datetime.now().isoformat()
-        })
-        
-    except Exception as e:
-        logger.error(f"Error in SERP search: {str(e)}")
-        return handle_error(e)
+# Inicializar servicios multiidioma
+language_detector = LanguageDetector()
+serp_scraper = MultilingualSerpScraper(cache_manager)
+content_analyzer = MultilingualContentAnalyzer(cache_manager)
 
 @app.route('/content/analyze', methods=['POST'])
 @limiter.limit("20 per minute")
 @require_api_key
 def analyze_content():
-    """Análisis completo de contenido"""
+    """Análisis completo de contenido multiidioma"""
     try:
         data = request.get_json()
         
@@ -104,11 +71,12 @@ def analyze_content():
         content = data['content']
         target_keywords = data['target_keywords']
         competitor_contents = data.get('competitor_contents', [])
+        language = data.get('language')  # Opcional, se detecta automáticamente
         
-        logger.info("Starting content analysis")
+        logger.info(f"Starting multilingual content analysis. Language: {language}")
         
         analysis = content_analyzer.comprehensive_analysis(
-            content, target_keywords, competitor_contents
+            content, target_keywords, competitor_contents, language
         )
         
         return jsonify({
@@ -118,7 +86,81 @@ def analyze_content():
         })
         
     except Exception as e:
-        logger.error(f"Error in content analysis: {str(e)}")
+        logger.error(f"Error in multilingual content analysis: {str(e)}")
+        return handle_error(e)
+
+@app.route('/serp/search', methods=['POST'])
+@limiter.limit("10 per minute")
+@require_api_key
+def search_serp():
+    """Obtener resultados SERP multiidioma"""
+    try:
+        data = request.get_json()
+        
+        if not validate_request(data, ['keywords']):
+            return jsonify({'error': 'Missing required fields'}), 400
+        
+        keywords = data['keywords']
+        location = data.get('location', 'US')
+        language = data.get('language')  # Opcional
+        pages = min(data.get('pages', 1), 3)
+        
+        results = {}
+        for keyword in keywords:
+            logger.info(f"Scraping SERP for keyword: {keyword}, language: {language}")
+            serp_data = serp_scraper.get_serp_results(keyword, location, language, pages)
+            results[keyword] = serp_data
+        
+        return jsonify({
+            'success': True,
+            'data': results,
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in multilingual SERP search: {str(e)}")
+        return handle_error(e)
+
+@app.route('/languages/supported', methods=['GET'])
+def get_supported_languages():
+    """Obtener idiomas soportados"""
+    try:
+        languages = language_detector.get_supported_languages()
+        return jsonify({
+            'success': True,
+            'data': {
+                'supported_languages': languages,
+                'total_languages': len(languages)
+            }
+        })
+    except Exception as e:
+        return handle_error(e)
+
+@app.route('/languages/detect', methods=['POST'])
+@require_api_key
+def detect_language():
+    """Detectar idioma de un texto"""
+    try:
+        data = request.get_json()
+        
+        if not validate_request(data, ['text']):
+            return jsonify({'error': 'Missing text field'}), 400
+        
+        text = data['text']
+        detected_lang = language_detector.detect_language(text)
+        lang_config = language_detector.get_language_config(detected_lang)
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'detected_language': detected_lang,
+                'language_name': lang_config['name'],
+                'confidence': 'high' if len(text) > 100 else 'medium',
+                'is_supported': language_detector.is_supported(detected_lang)
+            }
+        })
+        
+    except Exception as e:
         return handle_error(e)
 
 @app.route('/backlinks/analyze', methods=['POST'])

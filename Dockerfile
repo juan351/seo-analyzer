@@ -21,9 +21,18 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Descargar modelos de spacy y nltk
-RUN python -m spacy download en_core_web_sm
-RUN python -c "import nltk; nltk.download('punkt'); nltk.download('stopwords'); nltk.download('wordnet')"
+# Descargar modelos de spacy para múltiples idiomas
+RUN python -m spacy download en_core_web_sm    # Inglés
+RUN python -m spacy download es_core_news_sm    # Español
+RUN python -m spacy download fr_core_news_sm    # Francés (opcional)
+RUN python -m spacy download de_core_news_sm    # Alemán (opcional)
+
+# Descargar datos de nltk para múltiples idiomas
+RUN python -c "import nltk; \
+    nltk.download('punkt'); \
+    nltk.download('stopwords'); \
+    nltk.download('wordnet'); \
+    nltk.download('punkt_tab');"
 
 COPY . .
 
