@@ -10,6 +10,27 @@ class MultilingualSerpScraper:
         self.cache = cache_manager
         self.language_detector = LanguageDetector()
         self.setup_driver()
+
+    # app/services/serp_scraper.py
+
+
+    def setup_driver(self):
+        """Configurar driver de Selenium"""
+        from selenium.webdriver.chrome.options import Options
+        from fake_useragent import UserAgent
+        
+        self.ua = UserAgent()
+        chrome_options = Options()
+        chrome_options.add_argument('--headless')
+        chrome_options.add_argument('--no-sandbox')
+        chrome_options.add_argument('--disable-dev-shm-usage')
+        chrome_options.add_argument('--disable-gpu')
+        chrome_options.add_argument('--window-size=1920,1080')
+        chrome_options.add_argument(f'--user-agent={self.ua.random}')
+        chrome_options.add_argument('--disable-blink-features=AutomationControlled')
+        
+        self.driver = webdriver.Chrome(options=chrome_options)
+        self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         
     def get_serp_results(self, keyword, location='US', language=None, pages=1):
         """Scraping SERP adaptado por idioma y ubicación"""
