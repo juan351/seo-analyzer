@@ -7,8 +7,6 @@ from dotenv import load_dotenv
 import logging
 from datetime import datetime
 
-from .services.serp_scraper import SerpScraper
-from .services.content_analyzer import ContentAnalyzer
 from .services.backlink_analyzer import BacklinkAnalyzer
 from .services.performance_analyzer import PerformanceAnalyzer
 from .utils.cache import CacheManager
