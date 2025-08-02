@@ -18,25 +18,31 @@ RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key
 
 WORKDIR /app
 
+# Instalar dependencias Python
 COPY requirements.txt .
+RUN pip install --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Descargar modelos de spacy para múltiples idiomas
-RUN python -m spacy download en_core_web_sm    # Inglés
-RUN python -m spacy download es_core_news_sm    # Español
-RUN python -m spacy download fr_core_news_sm    # Francés (opcional)
-RUN python -m spacy download de_core_news_sm    # Alemán (opcional)
+# Descargar solo modelos esenciales
+RUN python -m spacy download en_core_web_sm
+RUN python -m spacy download es_core_news_sm
 
-# Descargar datos de nltk para múltiples idiomas
+# Descargar datos de nltk
 RUN python -c "import nltk; \
     nltk.download('punkt'); \
     nltk.download('stopwords'); \
-    nltk.download('wordnet'); \
-    nltk.download('punkt_tab');"
+    nltk.download('wordnet');"
 
+# Crear usuario no-root
+RUN adduser --disabled-password --gecos '' appuser
 COPY . .
+RUN chown -R appuser:appuser /app
+USER appuser
 
 EXPOSE 3000
 
-# Usar gunicorn para producción
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "--timeout", "120", "app.main:app"]
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:3000/ || exit 1
+
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--timeout", "120", "app.main:app"]
