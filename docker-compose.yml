@@ -4,7 +4,7 @@ services:
   seo-api:
     build: .
     ports:
-      - "5000:5000"
+      - "3000:3000"
     environment:
       - FLASK_ENV=production
       - REDIS_URL=redis://redis:6379/0
