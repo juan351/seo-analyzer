@@ -17,6 +17,14 @@ from .services.serp_scraper import MultilingualSerpScraper
 from .utils.language_detector import LanguageDetector
 load_dotenv()
 
+@app.route('/', methods=['GET'])
+def health_check():
+    return jsonify({
+        'status': 'healthy',
+        'timestamp': datetime.now().isoformat(),
+        'version': '1.0.0'
+    })
+
 def require_api_key(f):
     @wraps(f)
     def decorated(*args, **kwargs):
