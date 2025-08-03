@@ -17,13 +17,7 @@ from .services.serp_scraper import MultilingualSerpScraper
 from .utils.language_detector import LanguageDetector
 load_dotenv()
 
-@app.route('/', methods=['GET'])
-def health_check():
-    return jsonify({
-        'status': 'healthy',
-        'timestamp': datetime.now().isoformat(),
-        'version': '1.0.0'
-    })
+
 
 def require_api_key(f):
     @wraps(f)
@@ -62,6 +56,14 @@ performance_analyzer = PerformanceAnalyzer()
 language_detector = LanguageDetector()
 serp_scraper = MultilingualSerpScraper(cache_manager)
 content_analyzer = MultilingualContentAnalyzer(cache_manager)
+
+@app.route('/', methods=['GET'])
+def health_check():
+    return jsonify({
+        'status': 'healthy',
+        'timestamp': datetime.now().isoformat(),
+        'version': '1.0.0'
+    })
 
 @app.route('/content/analyze', methods=['POST'])
 @limiter.limit("20 per minute")
