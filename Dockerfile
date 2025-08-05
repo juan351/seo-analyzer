@@ -16,11 +16,9 @@ RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key
     && apt-get install -y google-chrome-stable \
     && rm -rf /var/lib/apt/lists/*
 
-# ✅ CORREGIDO - Instalar ChromeDriver con regex corregido
-RUN CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+' | head -1) \
-    && CHROME_MAJOR=$(echo $CHROME_VERSION | cut -d. -f1) \
-    && echo "Chrome version: $CHROME_VERSION, Major: $CHROME_MAJOR" \
-    && wget -O /tmp/chromedriver.zip "https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VERSION}/linux64/chromedriver-linux64.zip" \
+RUN LATEST_VERSION=$(curl -s "https://googlechromelabs.github.io/chrome-for-testing/LATEST_RELEASE_STABLE") \
+    && echo "Using latest Chrome version: $LATEST_VERSION" \
+    && wget -O /tmp/chromedriver.zip "https://storage.googleapis.com/chrome-for-testing-public/${LATEST_VERSION}/linux64/chromedriver-linux64.zip" \
     && unzip /tmp/chromedriver.zip -d /tmp/ \
     && mv /tmp/chromedriver-linux64/chromedriver /usr/local/bin/chromedriver \
     && chmod 755 /usr/local/bin/chromedriver \
