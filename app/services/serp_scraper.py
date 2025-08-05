@@ -5,6 +5,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
+from selenium.webdriver.chrome.service import Service
 import time
 import random
 import requests
@@ -14,6 +15,7 @@ from ..utils.language_detector import LanguageDetector
 import threading
 from datetime import datetime, timedelta
 import logging
+import os
 
 # Logging
 logging.basicConfig(level=logging.INFO)
@@ -82,11 +84,11 @@ class MultilingualSerpScraper:
                         
             chrome_options.add_argument(f'--user-agent={random.choice(realistic_user_agents)}')
             
-                    # ✅ USAR ChromeDriver instalado en Dockerfile
-            import os
+            # ✅ USAR ChromeDriver instalado en Dockerfile
+            
             chromedriver_path = os.environ.get('CHROMEDRIVER_PATH', '/usr/local/bin/chromedriver')
             
-            from selenium.webdriver.chrome.service import Service
+            
             service = Service(chromedriver_path)
             
             self.driver = webdriver.Chrome(service=service, options=chrome_options)
