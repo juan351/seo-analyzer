@@ -8,8 +8,11 @@ from selenium.common.exceptions import TimeoutException, NoSuchElementException
 import time
 import random
 import requests
+from bs4 import BeautifulSoup
 from urllib.parse import quote_plus
 from ..utils.language_detector import LanguageDetector
+import threading
+from datetime import datetime, timedelta
 import logging
 
 # Logging
@@ -21,6 +24,23 @@ class MultilingualSerpScraper:
         self.cache = cache_manager
         self.language_detector = LanguageDetector()
         self.driver = None
+
+        # ✅ RATE LIMITING AGRESIVO
+        self._last_request_time = {}
+        self._request_lock = threading.Lock()
+        self.min_delay_between_requests = 15  # 15 segundos mínimo
+        self.max_requests_per_hour = 20       # Máximo 20 requests/hora
+        self._hourly_requests = []
+
+        # ✅ USER AGENTS ROTATIVOS REALISTAS
+        self.user_agents = [
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15'
+        ]
         
         # Mapeo correcto de países a configuraciones de Google
         self.country_configs = {
@@ -59,13 +79,7 @@ class MultilingualSerpScraper:
             chrome_options.add_argument('--disable-web-security')
             chrome_options.add_argument('--disable-features=VizDisplayCompositor')
             chrome_options.add_argument('--disable-ipc-flooding-protection')
-            
-            # User agents reales
-            realistic_user_agents = [
-                'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
-                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
-            ]
+                        
             chrome_options.add_argument(f'--user-agent={random.choice(realistic_user_agents)}')
             
                     # ✅ USAR ChromeDriver instalado en Dockerfile
@@ -98,22 +112,62 @@ class MultilingualSerpScraper:
             logger.info(f"❌ Error configurando driver: {e}")
             self.driver = None
 
+    def enforce_rate_limit(self, endpoint_key='default'):
+        """Rate limiting agresivo para evitar bloqueos"""
+        with self._request_lock:
+            now = datetime.now()
+            
+            # ✅ Limpiar requests antiguos (más de 1 hora)
+            self._hourly_requests = [
+                req_time for req_time in self._hourly_requests 
+                if now - req_time < timedelta(hours=1)
+            ]
+            
+            # ✅ Verificar límite por hora
+            if len(self._hourly_requests) >= self.max_requests_per_hour:
+                oldest_request = min(self._hourly_requests)
+                wait_time = (oldest_request + timedelta(hours=1) - now).total_seconds()
+                if wait_time > 0:
+                    print(f"🚫 Rate limit reached. Waiting {wait_time:.1f} seconds...")
+                    time.sleep(wait_time)
+            
+            # ✅ Verificar delay mínimo entre requests
+            if endpoint_key in self._last_request_time:
+                time_since_last = (now - self._last_request_time[endpoint_key]).total_seconds()
+                if time_since_last < self.min_delay_between_requests:
+                    wait_time = self.min_delay_between_requests - time_since_last
+                    print(f"⏳ Rate limiting: waiting {wait_time:.1f} seconds...")
+                    time.sleep(wait_time)
+            
+            # ✅ Registrar este request
+            self._last_request_time[endpoint_key] = datetime.now()
+            self._hourly_requests.append(datetime.now())
+
     def get_serp_results(self, keyword, location='US', language=None, pages=1):
-        """Scraping SERP completo y funcional"""
-        logger.info(f"🔍 INICIO - Scrapeando SERP para: '{keyword}' en {location}")
-        # Detectar idioma si no se proporciona
-        if not language:
-            language = self.language_detector.detect_language(keyword)
+        """Método principal con rate limiting y fallback inteligente"""
         
-        # Obtener configuración del país
-        country_config = self.country_configs.get(location, self.country_configs['US'])
-        logger.info(f"🌍 Configuración país: {country_config}")
+        # ✅ APLICAR RATE LIMITING
         cache_key = f"serp:{keyword}:{location}:{language}:{pages}"
         cached_result = self.cache.get(cache_key)
         
         if cached_result:
-            logger.info(f"📋 Usando SERP cached para: {keyword}")
+            print(f"📋 Cache hit para: {keyword}")
             return cached_result
+        
+        print(f"🔍 Nueva búsqueda para: '{keyword}' - Aplicando rate limiting...")
+        self.enforce_rate_limit(f"serp_{location}")
+        
+        # ✅ INTENTAR FALLBACK DIRECTO (más efectivo que Selenium)
+        print(f"🚀 Usando método requests optimizado para: '{keyword}'")
+        return self.get_serp_results_optimized(keyword, location, language, pages)
+
+    def get_serp_results_optimized(self, keyword, location='US', language=None, pages=1):
+        """Método optimizado usando requests con máxima evasión"""
+        
+        if not language:
+            language = self.language_detector.detect_language(keyword)
+        
+        country_config = self.country_configs.get(location, self.country_configs['US'])
         
         results = {
             'keyword': keyword,
@@ -128,84 +182,516 @@ class MultilingualSerpScraper:
         }
         
         try:
-            # Configurar driver si no existe
-            logger.info(f"🚗 Estado del driver: {self.driver}")
-            if not self.driver:
-                self.setup_driver()
+            # ✅ SESSION CON CONFIGURACIÓN AVANZADA
+            session = requests.Session()
             
-            if not self.driver:
-                logger.info("❌ No se pudo configurar el driver")
-                return results
+            # ✅ HEADERS ULTRA-REALISTAS CON ROTACI N
+            headers = self.get_realistic_headers(country_config)
+            session.headers.update(headers)
             
-            logger.info(f"✅ Driver configurado: {type(self.driver)}")
+            # ✅ COOKIES INICIALES (simular visita previa)
+            session.get(f"https://{country_config['domain']}", timeout=10)
+            time.sleep(random.uniform(2, 4))
             
             for page in range(pages):
+                if page > 0:
+                    # Delay extra largo entre páginas
+                    delay = random.uniform(20, 35)
+                    print(f"⏳ Delay entre páginas: {delay:.1f} segundos...")
+                    time.sleep(delay)
                 
-
-                delay = random.uniform(8, 15)  # 8-15 segundos entre requests
-                logger.info(f"⏳ Esperando {delay:.1f} segundos...")
-                time.sleep(delay)
-                
-                # URL correcta con parámetros de país e idioma
+                # ✅ URL SIMPLE Y NATURAL
                 encoded_keyword = quote_plus(keyword)
-                url = f"https://www.google.com/search?q={encoded_keyword}"
+                url = f"https://{country_config['domain']}/search"
                 
-                logger.info(f"📄 Accediendo: {url}")
+                params = {
+                    'q': keyword,  # Sin encoding en params
+                    'num': 10,
+                    'hl': country_config['hl'],
+                    'gl': country_config['gl']
+                }
                 
-                self.driver.get(url)
-
-                # ✅ VERIFICAR SI GOOGLE NOS BLOQUEÓ
-                current_url = self.driver.current_url
-                page_title = self.driver.title.lower()
+                if page > 0:
+                    params['start'] = page * 10
                 
-                if 'sorry' in current_url or 'captcha' in page_title or 'blocked' in page_title:
-                    logger.info("🚫 GOOGLE BLOQUEÓ - Cambiando a fallback")
-                    self.driver.quit()
-                    self.driver = None
-                    return self.get_serp_results_fallback(keyword, location, language, pages)
+                print(f"📄 Página {page + 1}: {url} - Params: {params}")
                 
-                # Esperar que cargue la página
+                # ✅ DELAY ALEATORIO ANTES DE REQUEST
+                pre_delay = random.uniform(8, 15)
+                print(f"⏳ Pre-request delay: {pre_delay:.1f} segundos...")
+                time.sleep(pre_delay)
+                
+                # ✅ HACER REQUEST CON TIMEOUT LARGO
                 try:
-                    WebDriverWait(self.driver, 10).until(
-                        EC.presence_of_element_located((By.CSS_SELECTOR, 'div.g, div[data-ved]'))
-                    )
-                except TimeoutException:
-                    logger.info("⏰ Timeout esperando resultados")
+                    response = session.get(url, params=params, timeout=25)
+                    
+                    if response.status_code != 200:
+                        print(f"❌ HTTP {response.status_code}: {response.reason}")
+                        continue
+                    
+                    # ✅ VERIFICAR BLOQUEOS
+                    if self.is_blocked(response):
+                        print("🚫 Google bloqueó el request - Deteniendo scraping")
+                        break
+                    
+                    # ✅ PARSEAR RESULTADOS
+                    soup = BeautifulSoup(response.content, 'html.parser')
+                    page_results = self.extract_organic_results_advanced(soup)
+                    results['organic_results'].extend(page_results)
+                    
+                    print(f"✅ Página {page + 1}: {len(page_results)} resultados extraídos")
+                    
+                    # ✅ EXTRAER ELEMENTOS ADICIONALES (solo primera página)
+                    if page == 0:
+                        results['featured_snippet'] = self.extract_featured_snippet_bs4(soup)
+                        results['people_also_ask'] = self.extract_people_also_ask_bs4(soup)
+                        results['related_searches'] = self.extract_related_searches_bs4(soup)
+                    
+                except requests.RequestException as e:
+                    print(f"❌ Error en request: {e}")
                     continue
-                
-                # Extraer resultados orgánicos
-                page_results = self.extract_organic_results()
-                results['organic_results'].extend(page_results)
-                
-                # Extraer featured snippet (solo primera página)
-                if page == 0:
-                    results['featured_snippet'] = self.extract_featured_snippet()
-                    results['people_also_ask'] = self.extract_people_also_ask()
-                    results['related_searches'] = self.extract_related_searches()
-                
-                logger.info(f"✅ Extraídos {len(page_results)} resultados de página {page + 1}")
             
             results['total_results'] = len(results['organic_results'])
             
-            # Cache por 2 horas
-            if results['total_results'] > 0:
-                self.cache.set(cache_key, results, 7200)
-                logger.info(f"🎯 Total de resultados encontrados: {results['total_results']}")
+            # ✅ CACHE AGRESIVO PARA REDUCIR REQUESTS
+            cache_duration = 7200 if results['total_results'] > 0 else 1800  # 2h si hay resultados, 30min si no
+            self.cache.set(f"serp:{keyword}:{location}:{language}:{pages}", results, cache_duration)
             
+            print(f"🎯 TOTAL FINAL: {results['total_results']} resultados para '{keyword}'")
             return results
             
         except Exception as e:
-            logger.info(f"❌ Error scraping SERP: {str(e)}")
+            print(f"❌ Error general: {e}")
             return results
+
+    def get_realistic_headers(self, country_config):
+        """Headers realistas con rotación"""
+        base_headers = {
+            'User-Agent': random.choice(self.user_agents),
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': f"{country_config['hl']}-{country_config['gl'].upper()},{country_config['hl']};q=0.9,en;q=0.8",
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-User': '?1',
+            'Cache-Control': 'max-age=0',
+            'DNT': '1',
+        }
         
-        finally:
-            # Limpiar después de un tiempo para evitar detección
-            if hasattr(self, '_requests_count'):
-                self._requests_count += 1
-                if self._requests_count > 10:  # Restart driver cada 10 requests
-                    self.close_driver()
-            else:
-                self._requests_count = 1
+        # ✅ HEADERS ADICIONALES ALEATORIOS
+        if random.random() > 0.5:
+            base_headers['Sec-CH-UA'] = '"Google Chrome";v="119", "Chromium";v="119", "Not?A_Brand";v="24"'
+            base_headers['Sec-CH-UA-Mobile'] = '?0'
+            base_headers['Sec-CH-UA-Platform'] = random.choice(['"Windows"', '"macOS"', '"Linux"'])
+        
+        return base_headers
+
+    def is_blocked(self, response):
+        """Detectar si Google nos bloqueó"""
+        blocked_indicators = [
+            'sorry' in response.url.lower(),
+            'captcha' in response.text.lower(),
+            'unusual traffic' in response.text.lower(),
+            'blocked' in response.text.lower(),
+            'detected unusual' in response.text.lower(),
+            '/search/howsearchworks' in response.url,
+            response.status_code == 429
+        ]
+        
+        return any(blocked_indicators)
+    
+    def get_serp_results(self, keyword, location='US', language=None, pages=1):
+        """Método principal con rate limiting y fallback inteligente"""
+        
+        # ✅ APLICAR RATE LIMITING
+        cache_key = f"serp:{keyword}:{location}:{language}:{pages}"
+        cached_result = self.cache.get(cache_key)
+        
+        if cached_result:
+            print(f"📋 Cache hit para: {keyword}")
+            return cached_result
+        
+        print(f"🔍 Nueva búsqueda para: '{keyword}' - Aplicando rate limiting...")
+        self.enforce_rate_limit(f"serp_{location}")
+        
+        # ✅ INTENTAR FALLBACK DIRECTO (más efectivo que Selenium)
+        print(f"🚀 Usando método requests optimizado para: '{keyword}'")
+        return self.get_serp_results_optimized(keyword, location, language, pages)
+
+    def get_serp_results_optimized(self, keyword, location='US', language=None, pages=1):
+        """Método optimizado usando requests con máxima evasión"""
+        
+        if not language:
+            language = self.language_detector.detect_language(keyword)
+        
+        country_config = self.country_configs.get(location, self.country_configs['US'])
+        
+        results = {
+            'keyword': keyword,
+            'language': language,
+            'location': location,
+            'google_domain': country_config['domain'],
+            'organic_results': [],
+            'featured_snippet': None,
+            'people_also_ask': [],
+            'related_searches': [],
+            'total_results': 0
+        }
+        
+        try:
+            # ✅ SESSION CON CONFIGURACIÓN AVANZADA
+            session = requests.Session()
+            
+            # ✅ HEADERS ULTRA-REALISTAS CON ROTACI N
+            headers = self.get_realistic_headers(country_config)
+            session.headers.update(headers)
+            
+            # ✅ COOKIES INICIALES (simular visita previa)
+            session.get(f"https://{country_config['domain']}", timeout=10)
+            time.sleep(random.uniform(2, 4))
+            
+            for page in range(pages):
+                if page > 0:
+                    # Delay extra largo entre páginas
+                    delay = random.uniform(20, 35)
+                    print(f"⏳ Delay entre páginas: {delay:.1f} segundos...")
+                    time.sleep(delay)
+                
+                # ✅ URL SIMPLE Y NATURAL
+                encoded_keyword = quote_plus(keyword)
+                url = f"https://{country_config['domain']}/search"
+                
+                params = {
+                    'q': keyword,  # Sin encoding en params
+                    'num': 10,
+                    'hl': country_config['hl'],
+                    'gl': country_config['gl']
+                }
+                
+                if page > 0:
+                    params['start'] = page * 10
+                
+                print(f"📄 Página {page + 1}: {url} - Params: {params}")
+                
+                # ✅ DELAY ALEATORIO ANTES DE REQUEST
+                pre_delay = random.uniform(8, 15)
+                print(f"⏳ Pre-request delay: {pre_delay:.1f} segundos...")
+                time.sleep(pre_delay)
+                
+                # ✅ HACER REQUEST CON TIMEOUT LARGO
+                try:
+                    response = session.get(url, params=params, timeout=25)
+                    
+                    if response.status_code != 200:
+                        print(f"❌ HTTP {response.status_code}: {response.reason}")
+                        continue
+                    
+                    # ✅ VERIFICAR BLOQUEOS
+                    if self.is_blocked(response):
+                        print("🚫 Google bloqueó el request - Deteniendo scraping")
+                        break
+                    
+                    # ✅ PARSEAR RESULTADOS
+                    soup = BeautifulSoup(response.content, 'html.parser')
+                    page_results = self.extract_organic_results_advanced(soup)
+                    results['organic_results'].extend(page_results)
+                    
+                    print(f"✅ Página {page + 1}: {len(page_results)} resultados extraídos")
+                    
+                    # ✅ EXTRAER ELEMENTOS ADICIONALES (solo primera página)
+                    if page == 0:
+                        results['featured_snippet'] = self.extract_featured_snippet_bs4(soup)
+                        results['people_also_ask'] = self.extract_people_also_ask_bs4(soup)
+                        results['related_searches'] = self.extract_related_searches_bs4(soup)
+                    
+                except requests.RequestException as e:
+                    print(f"❌ Error en request: {e}")
+                    continue
+            
+            results['total_results'] = len(results['organic_results'])
+            
+            # ✅ CACHE AGRESIVO PARA REDUCIR REQUESTS
+            cache_duration = 7200 if results['total_results'] > 0 else 1800  # 2h si hay resultados, 30min si no
+            self.cache.set(f"serp:{keyword}:{location}:{language}:{pages}", results, cache_duration)
+            
+            print(f"🎯 TOTAL FINAL: {results['total_results']} resultados para '{keyword}'")
+            return results
+            
+        except Exception as e:
+            print(f"❌ Error general: {e}")
+            return results
+
+    def get_realistic_headers(self, country_config):
+        """Headers realistas con rotación"""
+        base_headers = {
+            'User-Agent': random.choice(self.user_agents),
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': f"{country_config['hl']}-{country_config['gl'].upper()},{country_config['hl']};q=0.9,en;q=0.8",
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-User': '?1',
+            'Cache-Control': 'max-age=0',
+            'DNT': '1',
+        }
+        
+        # ✅ HEADERS ADICIONALES ALEATORIOS
+        if random.random() > 0.5:
+            base_headers['Sec-CH-UA'] = '"Google Chrome";v="119", "Chromium";v="119", "Not?A_Brand";v="24"'
+            base_headers['Sec-CH-UA-Mobile'] = '?0'
+            base_headers['Sec-CH-UA-Platform'] = random.choice(['"Windows"', '"macOS"', '"Linux"'])
+        
+        return base_headers
+
+    def is_blocked(self, response):
+        """Detectar si Google nos bloqueó"""
+        blocked_indicators = [
+            'sorry' in response.url.lower(),
+            'captcha' in response.text.lower(),
+            'unusual traffic' in response.text.lower(),
+            'blocked' in response.text.lower(),
+            'detected unusual' in response.text.lower(),
+            '/search/howsearchworks' in response.url,
+            response.status_code == 429
+        ]
+        
+        return any(blocked_indicators)
+    
+    def extract_organic_results_advanced(self, soup):
+        """Extracción avanzada de resultados orgánicos"""
+        results = []
+        position = 1
+        
+        try:
+            # ✅ SELECTORES MÚLTIPLES ACTUALIZADOS 2024
+            selectors = [
+                'div.g:not(.g-blk):not(.kp-blk)',  # Clásico mejorado
+                'div.MjjYud',                       # Layout 2024
+                'div.yuRUbf',                       # Intermedio
+                'div[data-ved][jscontroller]:has(h3)', # Genérico
+                '.rc',                              # Fallback clásico
+            ]
+            
+            result_elements = []
+            
+            for selector in selectors:
+                try:
+                    elements = soup.select(selector)
+                    if len(elements) >= 3:  # Al menos 3 resultados válidos
+                        result_elements = elements
+                        print(f"✅ Usando selector exitoso: {selector} ({len(elements)} elementos)")
+                        break
+                except Exception as e:
+                    continue
+            
+            if not result_elements:
+                print("⚠️ No se encontraron elementos con selectores estándar")
+                return results
+            
+            for element in result_elements[:10]:  # Top 10
+                try:
+                    # ✅ EXTRACCIÓN ROBUSTA DE URL
+                    url = self.extract_url_robust(element)
+                    if not url:
+                        continue
+                    
+                    # ✅ EXTRACCIÓN ROBUSTA DE TÍTULO
+                    title = self.extract_title_robust(element)
+                    if not title:
+                        continue
+                    
+                    # ✅ SNIPPET
+                    snippet = self.extract_snippet_robust(element)
+                    
+                    results.append({
+                        'position': position,
+                        'title': title,
+                        'link': url,
+                        'snippet': snippet,
+                        'domain': self.extract_domain(url)
+                    })
+                    
+                    position += 1
+                    print(f"  ✅ Resultado {position-1}: {title[:60]}...")
+                    
+                except Exception as e:
+                    print(f"⚠️ Error procesando elemento: {e}")
+                    continue
+            
+        except Exception as e:
+            print(f"❌ Error en extracción avanzada: {e}")
+        
+        return results
+
+    def extract_url_robust(self, element):
+        """Extracción robusta de URLs"""
+        url_selectors = [
+            'a[href^="http"]',
+            'a[href^="/url?q=http"]',
+            'a[href*="://"]',
+            'a[href]'
+        ]
+        
+        for selector in url_selectors:
+            try:
+                link_elem = element.select_one(selector)
+                if link_elem:
+                    url = link_elem.get('href', '')
+                    
+                    # Limpiar URLs de Google
+                    if '/url?q=' in url:
+                        from urllib.parse import unquote
+                        url = url.split('/url?q=')[1].split('&')[0]
+                        url = unquote(url)
+                    
+                    # Verificar que es una URL válida y no de Google
+                    if (url and url.startswith('http') and 
+                        'google.com' not in url and 
+                        'googleusercontent.com' not in url):
+                        return url
+            except:
+                continue
+        
+        return None
+    
+    def extract_title_robust(self, element):
+        """Extracción robusta de títulos"""
+        title_selectors = [
+            'h3',
+            '.LC20lb',
+            '[role="heading"]',
+            '.DKV0Md',
+            '.BNeawe.vvjwJb.AP7Wnd',
+            'a h3',
+            'div[role="heading"]'
+        ]
+        
+        for selector in title_selectors:
+            try:
+                title_elem = element.select_one(selector)
+                if title_elem:
+                    title = title_elem.get_text(strip=True)
+                    if title and len(title) > 5:  # Título válido
+                        return title
+            except:
+                continue
+        
+        return None
+
+    def extract_snippet_robust(self, element):
+        """Extracción robusta de snippets"""
+        snippet_selectors = [
+            '.VwiC3b',
+            '.s3v9rd',
+            '.st',
+            '[data-content-feature="1"]',
+            '.IsZvec',
+            '.BNeawe.s3v9rd.AP7Wnd',
+            '.aCOpRe span',
+            '.hgKElc'
+        ]
+        
+        for selector in snippet_selectors:
+            try:
+                snippet_elem = element.select_one(selector)
+                if snippet_elem:
+                    snippet = snippet_elem.get_text(strip=True)
+                    if snippet and len(snippet) > 10:  # Snippet válido
+                        return snippet
+            except:
+                continue
+        
+        return ""
+
+    # ✅ MÉTODOS AUXILIARES PARA FEATURED SNIPPETS, ETC.
+    def extract_featured_snippet_bs4(self, soup):
+        """Extraer featured snippet"""
+        try:
+            selectors = [
+                '.xpdopen .hgKElc',
+                '.g .kp-blk',
+                '.UDZeY',
+                '.IThcWe',
+                '.kp-blk .Uo8X3b',
+                '.BNeawe.s3v9rd.AP7Wnd'
+            ]
+            
+            for selector in selectors:
+                element = soup.select_one(selector)
+                if element:
+                    text = element.get_text(strip=True)
+                    if text and len(text) > 20:
+                        return {
+                            'text': text,
+                            'source': 'Featured Snippet'
+                        }
+        except:
+            pass
+        return None
+
+    def extract_people_also_ask_bs4(self, soup):
+        """Extraer People Also Ask"""
+        questions = []
+        try:
+            selectors = [
+                '.related-question-pair',
+                '.cbphWd',
+                '[jsname="Cpkphb"]',
+                '.JlqpRe'
+            ]
+            
+            for selector in selectors:
+                elements = soup.select(selector)
+                for element in elements[:5]:
+                    text = element.get_text(strip=True)
+                    if text and '?' in text and len(text) > 10:
+                        questions.append(text)
+                if questions:
+                    break
+                    
+        except:
+            pass
+        return questions[:5]
+
+    def extract_related_searches_bs4(self, soup):
+        """Extraer búsquedas relacionadas"""
+        related = []
+        try:
+            selectors = [
+                '.k8XOCe',
+                '.s75CSd',
+                '.AuVD',
+                '.BNeawe.UPmit.AP7Wnd'
+            ]
+            
+            for selector in selectors:
+                elements = soup.select(selector)
+                for element in elements[:8]:
+                    text = element.get_text(strip=True)
+                    if text and len(text) > 3:
+                        related.append(text)
+                if related:
+                    break
+                    
+        except:
+            pass
+        return related[:8]
+
+    def extract_domain(self, url):
+        """Extraer dominio limpio"""
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(url)
+            return parsed.netloc.replace('www.', '')
+        except:
+            return ""
+
 
     def extract_organic_results(self):
         """Extraer resultados orgánicos con selectores actualizados 2024"""
@@ -409,6 +895,137 @@ class MultilingualSerpScraper:
         
         return related[:8]
 
+    def get_serp_google_api(self, keyword, location='US', language=None, pages=1):
+        """Fallback usando Google Custom Search API (oficial)"""
+        
+        api_key = os.environ.get('GOOGLE_API_KEY')
+        cx = os.environ.get('GOOGLE_CX')  # Custom Search Engine ID
+        
+        if not api_key or not cx:
+            print("⚠️ Google API credentials not configured")
+            return None
+        
+        if not language:
+            language = self.language_detector.detect_language(keyword)
+        
+        results = {
+            'keyword': keyword,
+            'language': language,
+            'location': location,
+            'google_domain': 'google.com',
+            'organic_results': [],
+            'total_results': 0,
+            'source': 'google_api'
+        }
+        
+        try:
+            # ✅ RATE LIMITING PARA API
+            self.enforce_rate_limit('google_api')
+            
+            url = "https://www.googleapis.com/customsearch/v1"
+            
+            for page in range(pages):
+                start_index = (page * 10) + 1
+                
+                params = {
+                    'key': api_key,
+                    'cx': cx,
+                    'q': keyword,
+                    'num': 10,
+                    'start': start_index,
+                    'lr': f'lang_{language}',
+                    'gl': location.lower()
+                }
+                
+                print(f"📡 Google API request for '{keyword}' - página {page + 1}")
+                
+                response = requests.get(url, params=params, timeout=15)
+                
+                if response.status_code != 200:
+                    print(f"❌ Google API error: {response.status_code}")
+                    break
+                
+                data = response.json()
+                
+                if 'items' not in data:
+                    print("⚠️ No items in Google API response")
+                    break
+                
+                # Procesar resultados
+                for i, item in enumerate(data['items']):
+                    position = (page * 10) + i + 1
+                    
+                    results['organic_results'].append({
+                        'position': position,
+                        'title': item.get('title', ''),
+                        'link': item.get('link', ''),
+                        'snippet': item.get('snippet', ''),
+                        'domain': self.extract_domain(item.get('link', ''))
+                    })
+                
+                print(f"✅ Google API: {len(data['items'])} resultados de página {page + 1}")
+                
+                # Delay entre páginas de API
+                if page < pages - 1:
+                    time.sleep(1)
+            
+            results['total_results'] = len(results['organic_results'])
+            
+            # Cache más largo para API (es más confiable)
+            if results['total_results'] > 0:
+                cache_key = f"serp_api:{keyword}:{location}:{language}:{pages}"
+                self.cache.set(cache_key, results, 14400)  # 4 horas
+            
+            print(f"🎯 Google API TOTAL: {results['total_results']} resultados")
+            return results
+            
+        except Exception as e:
+            print(f"❌ Error en Google API: {e}")
+            return None
+
+    # ✅ MÉTODO PRINCIPAL ACTUALIZADO CON FALLBACKS INTELIGENTES
+    def get_serp_results(self, keyword, location='US', language=None, pages=1):
+        """Método principal con fallbacks en cascada"""
+        
+        # 1. Verificar cache primero
+        cache_key = f"serp:{keyword}:{location}:{language}:{pages}"
+        cached_result = self.cache.get(cache_key)
+        
+        if cached_result:
+            print(f"📋 Cache hit para: {keyword}")
+            return cached_result
+        
+        print(f"🔍 Nueva búsqueda para: '{keyword}' en {location}")
+        
+        # 2. Intentar método optimizado (requests)
+        results = self.get_serp_results_optimized(keyword, location, language, pages)
+        
+        if results and results['total_results'] > 0:
+            print(f"✅ Método optimizado exitoso: {results['total_results']} resultados")
+            return results
+        
+        # 3. Fallback a Google Custom Search API
+        print("🔄 Fallback a Google API...")
+        api_results = self.get_serp_google_api(keyword, location, language, min(pages, 1))  # API limitado a 1 página
+        
+        if api_results and api_results['total_results'] > 0:
+            print(f"✅ Google API exitoso: {api_results['total_results']} resultados")
+            return api_results
+        
+        # 4. Último fallback - resultados vacíos con estructura correcta
+        print("⚠️ Todos los métodos fallaron - retornando estructura vacía")
+        return {
+            'keyword': keyword,
+            'language': language or 'en',
+            'location': location,
+            'google_domain': self.country_configs.get(location, self.country_configs['US'])['domain'],
+            'organic_results': [],
+            'featured_snippet': None,
+            'people_also_ask': [],
+            'related_searches': [],
+            'total_results': 0,
+            'source': 'empty_fallback'
+        }
     def close_driver(self):
         """Cerrar driver para reiniciar"""
         if self.driver:
@@ -549,7 +1166,7 @@ class MultilingualSerpScraper:
         cached_result = self.cache.get(cache_key)
         
         if cached_result:
-            print(f"📋 Usando SERP fallback cached para: {keyword}")
+            logger.info(f"📋 Usando SERP fallback cached para: {keyword}")
             return cached_result
         
         results = {
@@ -565,7 +1182,7 @@ class MultilingualSerpScraper:
         }
         
         try:
-            print(f"🔄 FALLBACK: Scrapeando con requests para '{keyword}'")
+            logger.info(f"🔄 FALLBACK: Scrapeando con requests para '{keyword}'")
             
             import requests
             from bs4 import BeautifulSoup
@@ -596,7 +1213,7 @@ class MultilingualSerpScraper:
             for page in range(pages):
                 if page > 0:
                     delay = random.uniform(15, 25)  # Delay largo entre páginas
-                    print(f"⏳ FALLBACK: Esperando {delay:.1f} segundos...")
+                    logger.info(f"⏳ FALLBACK: Esperando {delay:.1f} segundos...")
                     time.sleep(delay)
                 
                 # URL simple para evitar detección
@@ -606,7 +1223,7 @@ class MultilingualSerpScraper:
                 if page > 0:
                     url += f"&start={page * 10}"
                 
-                print(f"📄 FALLBACK página {page + 1}: {url}")
+                logger.info(f"📄 FALLBACK página {page + 1}: {url}")
                 
                 # Delay inicial
                 time.sleep(random.uniform(5, 10))
@@ -615,14 +1232,14 @@ class MultilingualSerpScraper:
                     response = session.get(url, timeout=20)
                     
                     if response.status_code != 200:
-                        print(f"❌ FALLBACK HTTP {response.status_code}")
+                        logger.info(f"❌ FALLBACK HTTP {response.status_code}")
                         continue
                     
                     # Verificar si nos bloquearon
                     if ('sorry' in response.url.lower() or 
                         'captcha' in response.text.lower() or 
                         'unusual traffic' in response.text.lower()):
-                        print("🚫 FALLBACK también bloqueado por Google")
+                        logger.info("🚫 FALLBACK también bloqueado por Google")
                         break
                     
                     # Parsear con BeautifulSoup
@@ -632,7 +1249,7 @@ class MultilingualSerpScraper:
                     page_results = self.extract_organic_results_bs4(soup)
                     results['organic_results'].extend(page_results)
                     
-                    print(f"✅ FALLBACK: {len(page_results)} resultados de página {page + 1}")
+                    logger.info(f"✅ FALLBACK: {len(page_results)} resultados de página {page + 1}")
                     
                     # Si primera página, extraer elementos adicionales
                     if page == 0:
@@ -641,7 +1258,7 @@ class MultilingualSerpScraper:
                         results['related_searches'] = self.extract_related_searches_bs4(soup)
                     
                 except Exception as e:
-                    print(f"❌ Error en request fallback: {e}")
+                    logger.info(f"❌ Error en request fallback: {e}")
                     continue
             
             results['total_results'] = len(results['organic_results'])
@@ -649,14 +1266,14 @@ class MultilingualSerpScraper:
             # Cache por 1 hora (menos tiempo porque puede ser menos confiable)
             if results['total_results'] > 0:
                 self.cache.set(cache_key, results, 3600)
-                print(f"🎯 FALLBACK TOTAL: {results['total_results']} resultados")
+                logger.info(f"🎯 FALLBACK TOTAL: {results['total_results']} resultados")
             else:
-                print("⚠️ FALLBACK: No se encontraron resultados")
+                logger.info("⚠️ FALLBACK: No se encontraron resultados")
             
             return results
             
         except Exception as e:
-            print(f"❌ Error general en fallback: {e}")
+            logger.info(f"❌ Error general en fallback: {e}")
             return results
 
     def extract_organic_results_bs4(self, soup):
@@ -679,20 +1296,20 @@ class MultilingualSerpScraper:
             for selector in selectors:
                 try:
                     elements = soup.select(selector)
-                    print(f"🔍 FALLBACK selector '{selector}': {len(elements)} elementos")
+                    logger.info(f"🔍 FALLBACK selector '{selector}': {len(elements)} elementos")
                     
                     if len(elements) >= 3:  # Al menos 3 resultados
                         result_elements = elements
                         successful_selector = selector
-                        print(f"✅ FALLBACK usando selector: {selector}")
+                        logger.info(f"✅ FALLBACK usando selector: {selector}")
                         break
                         
                 except Exception as e:
-                    print(f"❌ FALLBACK error con selector '{selector}': {e}")
+                    logger.info(f"❌ FALLBACK error con selector '{selector}': {e}")
                     continue
             
             if not result_elements:
-                print("⚠️ FALLBACK: No se encontraron elementos con ningún selector")
+                logger.info("⚠️ FALLBACK: No se encontraron elementos con ningún selector")
                 return results
             
             for element in result_elements[:10]:  # Top 10
@@ -734,16 +1351,16 @@ class MultilingualSerpScraper:
                             'domain': self.extract_domain(url)
                         })
                         position += 1
-                        print(f"✅ FALLBACK resultado {position-1}: {title[:50]}...")
+                        logger.info(f"✅ FALLBACK resultado {position-1}: {title[:50]}...")
                         
                 except Exception as e:
-                    print(f"⚠️ FALLBACK error extrayendo resultado: {e}")
+                    logger.info(f"⚠️ FALLBACK error extrayendo resultado: {e}")
                     continue
             
-            print(f"📊 FALLBACK total extraído: {len(results)} resultados")
+            logger.info(f"📊 FALLBACK total extraído: {len(results)} resultados")
             
         except Exception as e:
-            print(f"❌ FALLBACK error extrayendo resultados orgánicos: {e}")
+            logger.info(f"❌ FALLBACK error extrayendo resultados orgánicos: {e}")
         
         return results
 
@@ -798,6 +1415,22 @@ class MultilingualSerpScraper:
         except:
             pass
         return related[:8]
+    
+    def get_rotating_proxy(self):
+        """Configurar proxy rotativo (cuando tengas servicio)"""
+        proxies = [
+            # Lista de proxies rotativos
+            # 'http://proxy1:port',
+            # 'http://proxy2:port',
+        ]
+        
+        if proxies:
+            proxy = random.choice(proxies)
+            return {
+                'http': proxy,
+                'https': proxy
+            }
+        return None
 
     def __del__(self):
         """Destructor para cerrar driver"""
