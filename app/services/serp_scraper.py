@@ -536,6 +536,268 @@ class MultilingualSerpScraper:
                 continue
         
         return suggestions
+    
+    def get_serp_results_fallback(self, keyword, location='US', language=None, pages=1):
+        """Fallback usando requests cuando Selenium es bloqueado"""
+        
+        if not language:
+            language = self.language_detector.detect_language(keyword)
+        
+        country_config = self.country_configs.get(location, self.country_configs['US'])
+        
+        cache_key = f"serp_fallback:{keyword}:{location}:{language}:{pages}"
+        cached_result = self.cache.get(cache_key)
+        
+        if cached_result:
+            print(f"📋 Usando SERP fallback cached para: {keyword}")
+            return cached_result
+        
+        results = {
+            'keyword': keyword,
+            'language': language,
+            'location': location,
+            'google_domain': country_config['domain'],
+            'organic_results': [],
+            'featured_snippet': None,
+            'people_also_ask': [],
+            'related_searches': [],
+            'total_results': 0
+        }
+        
+        try:
+            print(f"🔄 FALLBACK: Scrapeando con requests para '{keyword}'")
+            
+            import requests
+            from bs4 import BeautifulSoup
+            import time
+            import random
+            from urllib.parse import quote_plus
+            
+            session = requests.Session()
+            
+            # Headers ultra-realistas
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+                'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'none',
+                'Sec-Fetch-User': '?1',
+                'Cache-Control': 'max-age=0',
+                'DNT': '1',
+            }
+            
+            session.headers.update(headers)
+            
+            for page in range(pages):
+                if page > 0:
+                    delay = random.uniform(15, 25)  # Delay largo entre páginas
+                    print(f"⏳ FALLBACK: Esperando {delay:.1f} segundos...")
+                    time.sleep(delay)
+                
+                # URL simple para evitar detección
+                encoded_keyword = quote_plus(keyword)
+                url = f"https://www.google.com/search?q={encoded_keyword}&num=10"
+                
+                if page > 0:
+                    url += f"&start={page * 10}"
+                
+                print(f"📄 FALLBACK página {page + 1}: {url}")
+                
+                # Delay inicial
+                time.sleep(random.uniform(5, 10))
+                
+                try:
+                    response = session.get(url, timeout=20)
+                    
+                    if response.status_code != 200:
+                        print(f"❌ FALLBACK HTTP {response.status_code}")
+                        continue
+                    
+                    # Verificar si nos bloquearon
+                    if ('sorry' in response.url.lower() or 
+                        'captcha' in response.text.lower() or 
+                        'unusual traffic' in response.text.lower()):
+                        print("🚫 FALLBACK también bloqueado por Google")
+                        break
+                    
+                    # Parsear con BeautifulSoup
+                    soup = BeautifulSoup(response.content, 'html.parser')
+                    
+                    # Extraer resultados
+                    page_results = self.extract_organic_results_bs4(soup)
+                    results['organic_results'].extend(page_results)
+                    
+                    print(f"✅ FALLBACK: {len(page_results)} resultados de página {page + 1}")
+                    
+                    # Si primera página, extraer elementos adicionales
+                    if page == 0:
+                        results['featured_snippet'] = self.extract_featured_snippet_bs4(soup)
+                        results['people_also_ask'] = self.extract_people_also_ask_bs4(soup)
+                        results['related_searches'] = self.extract_related_searches_bs4(soup)
+                    
+                except Exception as e:
+                    print(f"❌ Error en request fallback: {e}")
+                    continue
+            
+            results['total_results'] = len(results['organic_results'])
+            
+            # Cache por 1 hora (menos tiempo porque puede ser menos confiable)
+            if results['total_results'] > 0:
+                self.cache.set(cache_key, results, 3600)
+                print(f"🎯 FALLBACK TOTAL: {results['total_results']} resultados")
+            else:
+                print("⚠️ FALLBACK: No se encontraron resultados")
+            
+            return results
+            
+        except Exception as e:
+            print(f"❌ Error general en fallback: {e}")
+            return results
+
+    def extract_organic_results_bs4(self, soup):
+        """Extraer resultados orgánicos usando BeautifulSoup"""
+        results = []
+        position = 1
+        
+        try:
+            # Selectores para diferentes layouts de Google
+            selectors = [
+                'div.g:not(.g-blk)',      # Layout clásico
+                'div.MjjYud',             # Nuevo layout 2024
+                'div.yuRUbf',             # Layout intermedio
+                'div[data-ved]:has(h3)',  # Genérico con heading
+            ]
+            
+            result_elements = []
+            successful_selector = None
+            
+            for selector in selectors:
+                try:
+                    elements = soup.select(selector)
+                    print(f"🔍 FALLBACK selector '{selector}': {len(elements)} elementos")
+                    
+                    if len(elements) >= 3:  # Al menos 3 resultados
+                        result_elements = elements
+                        successful_selector = selector
+                        print(f"✅ FALLBACK usando selector: {selector}")
+                        break
+                        
+                except Exception as e:
+                    print(f"❌ FALLBACK error con selector '{selector}': {e}")
+                    continue
+            
+            if not result_elements:
+                print("⚠️ FALLBACK: No se encontraron elementos con ningún selector")
+                return results
+            
+            for element in result_elements[:10]:  # Top 10
+                try:
+                    # Extraer URL
+                    url = ""
+                    link_element = element.select_one('a[href^="http"], a[href^="/url?q=http"]')
+                    
+                    if link_element:
+                        url = link_element.get('href', '')
+                        
+                        # Limpiar URLs de Google
+                        if '/url?q=' in url:
+                            from urllib.parse import unquote
+                            url = url.split('/url?q=')[1].split('&')[0]
+                            url = unquote(url)
+                        
+                        if not url or 'google.com' in url:
+                            continue
+                    
+                    # Extraer título
+                    title = ""
+                    title_element = element.select_one('h3, .LC20lb, [role="heading"], .DKV0Md')
+                    if title_element:
+                        title = title_element.get_text(strip=True)
+                    
+                    # Extraer snippet
+                    snippet = ""
+                    snippet_element = element.select_one('.VwiC3b, .s3v9rd, .st, [data-content-feature="1"], .IsZvec')
+                    if snippet_element:
+                        snippet = snippet_element.get_text(strip=True)
+                    
+                    if title and url:
+                        results.append({
+                            'position': position,
+                            'title': title,
+                            'link': url,
+                            'snippet': snippet,
+                            'domain': self.extract_domain(url)
+                        })
+                        position += 1
+                        print(f"✅ FALLBACK resultado {position-1}: {title[:50]}...")
+                        
+                except Exception as e:
+                    print(f"⚠️ FALLBACK error extrayendo resultado: {e}")
+                    continue
+            
+            print(f"📊 FALLBACK total extraído: {len(results)} resultados")
+            
+        except Exception as e:
+            print(f"❌ FALLBACK error extrayendo resultados orgánicos: {e}")
+        
+        return results
+
+    def extract_featured_snippet_bs4(self, soup):
+        """Extraer featured snippet con BeautifulSoup"""
+        try:
+            selectors = ['.xpdopen .hgKElc', '.g .kp-blk', '.UDZeY', '.IThcWe']
+            
+            for selector in selectors:
+                element = soup.select_one(selector)
+                if element:
+                    return {
+                        'text': element.get_text(strip=True),
+                        'source': 'Featured Snippet'
+                    }
+        except:
+            pass
+        return None
+
+    def extract_people_also_ask_bs4(self, soup):
+        """Extraer preguntas con BeautifulSoup"""
+        questions = []
+        try:
+            selectors = ['.related-question-pair', '.cbphWd', '[jsname="Cpkphb"]']
+            
+            for selector in selectors:
+                elements = soup.select(selector)
+                for element in elements[:5]:
+                    text = element.get_text(strip=True)
+                    if text and '?' in text:
+                        questions.append(text)
+                if questions:
+                    break
+        except:
+            pass
+        return questions[:5]
+
+    def extract_related_searches_bs4(self, soup):
+        """Extraer búsquedas relacionadas con BeautifulSoup"""
+        related = []
+        try:
+            selectors = ['.k8XOCe', '.s75CSd', '.AuVD']
+            
+            for selector in selectors:
+                elements = soup.select(selector)
+                for element in elements[:8]:
+                    text = element.get_text(strip=True)
+                    if text:
+                        related.append(text)
+                if related:
+                    break
+        except:
+            pass
+        return related[:8]
 
     def __del__(self):
         """Destructor para cerrar driver"""
