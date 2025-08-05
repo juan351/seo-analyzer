@@ -6,6 +6,12 @@ import re
 from collections import Counter
 from urllib.parse import urlparse, urljoin
 import time
+import logging
+
+# Logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 try:
     import spacy
     SPACY_AVAILABLE = True
@@ -33,16 +39,16 @@ class MultilingualContentAnalyzer:
     def load_models(self):
         """Cargar modelos disponibles"""
         if not SPACY_AVAILABLE:
-            print("⚠️ Spacy no disponible, usando análisis básico")
+            logger.info("⚠️ Spacy no disponible, usando análisis básico")
             return
             
         for lang_code, config in self.language_detector.get_supported_languages().items():
             try:
                 model_name = config['spacy_model']
                 self.nlp_models[lang_code] = spacy.load(model_name)
-                print(f"✅ Modelo {model_name} cargado")
+                logger.info(f"✅ Modelo {model_name} cargado")
             except OSError:
-                print(f"❌ Modelo {model_name} no encontrado")
+                logger.info(f"❌ Modelo {model_name} no encontrado")
 
     def comprehensive_analysis(self, content, target_keywords=None, competitor_contents=None, language=None):
         """Análisis completo autónomo - encuentra competidores automáticamente"""
@@ -55,13 +61,13 @@ class MultilingualContentAnalyzer:
         if not target_keywords:
             target_keywords = self.extract_keywords_from_content(content, language)
         
-        print(f"🔍 Keywords extraídas: {target_keywords}")
+        logger.info(f"🔍 Keywords extraídas: {target_keywords}")
         
         cache_key = f"auto_analysis:{language}:{hash(content)}:{hash(str(target_keywords))}"
         cached_result = self.cache.get(cache_key)
         
         if cached_result:
-            print("📋 Usando resultado cached")
+            logger.info("📋 Usando resultado cached")
             return cached_result
         
         # Análisis básico del contenido
@@ -84,7 +90,7 @@ class MultilingualContentAnalyzer:
             analysis['semantic_analysis'] = self.basic_semantic_analysis(content, language)
         
         # ANÁLISIS COMPETITIVO AUTOMÁTICO
-        print("🏆 Iniciando análisis competitivo automático...")
+        logger.info("🏆 Iniciando análisis competitivo automático...")
         competitive_data = self.auto_competitive_analysis(target_keywords, content, language)
         
         if competitive_data and competitive_data.get('competitors_analyzed', 0) > 0:
@@ -95,9 +101,9 @@ class MultilingualContentAnalyzer:
                 competitive_data, analysis, target_keywords
             )
             analysis['optimization_suggestions'].extend(competitive_suggestions)
-            print(f"💡 Generadas {len(competitive_suggestions)} sugerencias competitivas")
+            logger.info(f"💡 Generadas {len(competitive_suggestions)} sugerencias competitivas")
         else:
-            print("⚠️ No se pudieron obtener datos competitivos")
+            logger.info("⚠️ No se pudieron obtener datos competitivos")
         
         # Generar sugerencias básicas
         basic_suggestions = self.generate_suggestions(analysis, language)
@@ -149,7 +155,7 @@ class MultilingualContentAnalyzer:
             return keywords[:max_keywords] if keywords else ['contenido', 'información']
             
         except Exception as e:
-            print(f"Error extrayendo keywords: {e}")
+            logger.info(f"Error extrayendo keywords: {e}")
             return ['contenido', 'información']
 
     def get_stop_words(self, language):
@@ -171,7 +177,7 @@ class MultilingualContentAnalyzer:
             
             # Para cada keyword, obtener top competidores
             for keyword in keywords:
-                print(f"🔍 Buscando competidores para: {keyword}")
+                logger.info(f"🔍 Buscando competidores para: {keyword}")
                 
                 # Obtener SERP
                 serp_results = serp_scraper.get_serp_results(
@@ -194,7 +200,7 @@ class MultilingualContentAnalyzer:
                         continue
                     
                     # Hacer scraping del contenido
-                    print(f"📄 Scrapeando: {url}")
+                    logger.info(f"📄 Scrapeando: {url}")
                     content = self.scrape_content(url)
                     
                     if content and len(content) > 200:  # Mínimo de contenido
@@ -228,7 +234,7 @@ class MultilingualContentAnalyzer:
             )
             
         except Exception as e:
-            print(f"Error en análisis competitivo: {e}")
+            logger.info(f"Error en análisis competitivo: {e}")
             return None
 
     def scrape_content(self, url):
@@ -289,7 +295,7 @@ class MultilingualContentAnalyzer:
             return content
             
         except Exception as e:
-            print(f"Error scrapeando {url}: {e}")
+            logger.info(f"Error scrapeando {url}: {e}")
             return ""
 
     def compare_with_competitors(self, my_content, keywords, competitors_data, all_competitor_contents, language):
@@ -493,7 +499,7 @@ class MultilingualContentAnalyzer:
             return [word for word, count in word_freq.most_common(8) if count > 1]
             
         except Exception as e:
-            print(f"Error extrayendo términos relacionados: {e}")
+            logger.info(f"Error extrayendo términos relacionados: {e}")
             return []
 
     def analyze_competitors(self, keywords, my_domain, top_n=5):
@@ -501,14 +507,14 @@ class MultilingualContentAnalyzer:
         try:
             from ..services.serp_scraper import MultilingualSerpScraper
             
-            print(f"🏆 Analizando competidores para keywords: {keywords}")
+            logger.info(f"🏆 Analizando competidores para keywords: {keywords}")
             
             serp_scraper = MultilingualSerpScraper(self.cache)
             competitors_found = {}
             all_competitors = []
             
             for keyword in keywords:
-                print(f"🔍 Buscando competidores para: {keyword}")
+                logger.info(f"🔍 Buscando competidores para: {keyword}")
                 
                 # Obtener SERP
                 serp_results = serp_scraper.get_serp_results(keyword, location='US', pages=1)
@@ -568,7 +574,7 @@ class MultilingualContentAnalyzer:
             }
             
         except Exception as e:
-            print(f"Error analizando competidores: {e}")
+            logger.info(f"Error analizando competidores: {e}")
             return {
                 'error': f'Error analyzing competitors: {str(e)}',
                 'competitors_found': 0,

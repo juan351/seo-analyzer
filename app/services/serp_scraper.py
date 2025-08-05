@@ -95,14 +95,14 @@ class MultilingualSerpScraper:
 
     def get_serp_results(self, keyword, location='US', language=None, pages=1):
         """Scraping SERP completo y funcional"""
-        
+        print(f"🔍 INICIO - Scrapeando SERP para: '{keyword}' en {location}")
         # Detectar idioma si no se proporciona
         if not language:
             language = self.language_detector.detect_language(keyword)
         
         # Obtener configuración del país
         country_config = self.country_configs.get(location, self.country_configs['US'])
-        
+        print(f"🌍 Configuración país: {country_config}")
         cache_key = f"serp:{keyword}:{location}:{language}:{pages}"
         cached_result = self.cache.get(cache_key)
         
@@ -124,6 +124,7 @@ class MultilingualSerpScraper:
         
         try:
             # Configurar driver si no existe
+            print(f"🚗 Estado del driver: {self.driver}")
             if not self.driver:
                 self.setup_driver()
             
@@ -131,7 +132,7 @@ class MultilingualSerpScraper:
                 print("❌ No se pudo configurar el driver")
                 return results
             
-            print(f"🔍 Scrapeando SERP para: '{keyword}' en {location}")
+            print(f"✅ Driver configurado: {type(self.driver)}")
             
             for page in range(pages):
                 
@@ -202,60 +203,97 @@ class MultilingualSerpScraper:
                 self._requests_count = 1
 
     def extract_organic_results(self):
-        """Extraer resultados orgánicos de la página actual"""
+        """Extraer resultados orgánicos con selectores actualizados 2024"""
         results = []
         
         try:
-            # Selectores múltiples para diferentes layouts de Google
+            # ✅ SELECTORES ACTUALIZADOS para Google 2024
             selectors = [
-                'div.g:not(.g-blk)',  # Resultados estándar
-                'div[data-ved][jscontroller]:has(a[href^="http"])',  # Layout nuevo
-                '.rc .r',  # Layout clásico
+                'div.MjjYud',      # Nuevo layout 2024
+                'div.yuRUbf',      # Layout intermedio
+                'div.g:not(.g-blk)', # Layout clásico
+                'div[data-ved]:has(h3)', # Genérico con heading
             ]
             
             result_elements = []
+            successful_selector = None
+            
             for selector in selectors:
                 try:
                     elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                    if elements:
+                    print(f"🔍 Selector '{selector}': {len(elements)} elementos")
+                    
+                    if len(elements) >= 3:  # Al menos 3 resultados válidos
                         result_elements = elements
+                        successful_selector = selector
+                        print(f"✅ Usando selector: {selector}")
                         break
-                except:
+                        
+                except Exception as e:
+                    print(f"❌ Error con selector '{selector}': {e}")
                     continue
             
             if not result_elements:
-                print("⚠️ No se encontraron elementos de resultados")
+                print("⚠️ No se encontraron elementos con ningún selector")
+                # ✅ FALLBACK - Buscar cualquier enlace que parezca resultado
+                try:
+                    fallback_elements = self.driver.find_elements(By.CSS_SELECTOR, 'a[href^="http"]:has(h3)')
+                    if fallback_elements:
+                        result_elements = fallback_elements[:10]
+                        print(f"🔄 Usando fallback: {len(result_elements)} elementos")
+                except:
+                    pass
+            
+            if not result_elements:
                 return results
             
             position = len(results) + 1
             
             for element in result_elements[:10]:  # Top 10 por página
                 try:
-                    # Extraer URL
-                    link_element = element.find_element(By.CSS_SELECTOR, 'a[href^="http"]')
-                    url = link_element.get_attribute('href')
+                    # ✅ EXTRACCIÓN MEJORADA de URL
+                    url = ""
+                    link_selectors = ['a[href^="http"]', 'a[href^="/url?q=http"]', 'a']
+                    
+                    for link_sel in link_selectors:
+                        try:
+                            link_element = element.find_element(By.CSS_SELECTOR, link_sel)
+                            url = link_element.get_attribute('href')
+                            
+                            # Limpiar URLs de Google
+                            if '/url?q=' in url:
+                                url = url.split('/url?q=')[1].split('&')[0]
+                                from urllib.parse import unquote
+                                url = unquote(url)
+                            
+                            if url and 'http' in url and 'google.com' not in url:
+                                break
+                        except:
+                            continue
                     
                     if not url or 'google.com' in url:
                         continue
                     
-                    # Extraer título
+                    # ✅ EXTRACCIÓN MEJORADA de título
                     title = ""
-                    title_selectors = ['h3', '.LC20lb', '[role="heading"]']
-                    for sel in title_selectors:
+                    title_selectors = ['h3', '.LC20lb', '[role="heading"]', '.DKV0Md']
+                    
+                    for title_sel in title_selectors:
                         try:
-                            title_elem = element.find_element(By.CSS_SELECTOR, sel)
+                            title_elem = element.find_element(By.CSS_SELECTOR, title_sel)
                             title = title_elem.text.strip()
                             if title:
                                 break
                         except:
                             continue
                     
-                    # Extraer snippet/descripción
+                    # ✅ EXTRACCIÓN MEJORADA de snippet
                     snippet = ""
-                    snippet_selectors = ['.VwiC3b', '.s3v9rd', '.st', '[data-content-feature="1"]']
-                    for sel in snippet_selectors:
+                    snippet_selectors = ['.VwiC3b', '.s3v9rd', '.st', '[data-content-feature="1"]', '.IsZvec']
+                    
+                    for snippet_sel in snippet_selectors:
                         try:
-                            snippet_elem = element.find_element(By.CSS_SELECTOR, sel)
+                            snippet_elem = element.find_element(By.CSS_SELECTOR, snippet_sel)
                             snippet = snippet_elem.text.strip()
                             if snippet:
                                 break
@@ -271,13 +309,18 @@ class MultilingualSerpScraper:
                             'domain': self.extract_domain(url)
                         })
                         position += 1
+                        print(f"✅ Resultado {position-1}: {title[:50]}...")
                     
                 except Exception as e:
                     print(f"⚠️ Error extrayendo resultado individual: {e}")
                     continue
             
+            print(f"📊 Total extraído: {len(results)} resultados")
+            
         except Exception as e:
             print(f"❌ Error extrayendo resultados orgánicos: {e}")
+            import traceback
+            traceback.print_exc()
         
         return results
 

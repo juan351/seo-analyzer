@@ -269,6 +269,7 @@ def analyze_competitors():
         logger.info(f"Analyzing competitors for keywords: {keywords}")
         
         analysis = content_analyzer.analyze_competitors(keywords, my_domain, top_n)
+        logger.info(f"Competitor analysis complete: {analysis}")
         
         return jsonify({
             'success': True,
