@@ -40,32 +40,50 @@ class MultilingualSerpScraper:
             chrome_options = Options()
             
             # Configuración anti-detección
-            chrome_options.add_argument('--headless')
+            chrome_options.add_argument('--headless=new')  # Nuevo modo headless
             chrome_options.add_argument('--no-sandbox')
             chrome_options.add_argument('--disable-dev-shm-usage')
             chrome_options.add_argument('--disable-gpu')
-            chrome_options.add_argument('--window-size=1920,1080')
+            chrome_options.add_argument('--window-size=1366,768')  # Resolución común
             chrome_options.add_argument('--disable-blink-features=AutomationControlled')
             chrome_options.add_argument('--disable-extensions')
             chrome_options.add_argument('--disable-plugins')
-            chrome_options.add_argument('--disable-images')  # Más rápido
+            chrome_options.add_argument('--disable-images')
+            chrome_options.add_argument('--disable-javascript')  # Más sigiloso
+            chrome_options.add_argument('--user-data-dir=/tmp/chrome-user-data')
+            chrome_options.add_argument('--disable-web-security')
+            chrome_options.add_argument('--disable-features=VizDisplayCompositor')
+            chrome_options.add_argument('--disable-ipc-flooding-protection')
             
             # User agents reales
-            user_agents = [
+            realistic_user_agents = [
+                'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
                 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36',
                 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
             ]
-            chrome_options.add_argument(f'--user-agent={random.choice(user_agents)}')
+            chrome_options.add_argument(f'--user-agent={random.choice(realistic_user_agents)}')
             
-            self.driver = webdriver.Chrome(options=chrome_options)
+                    # ✅ USAR ChromeDriver instalado en Dockerfile
+            import os
+            chromedriver_path = os.environ.get('CHROMEDRIVER_PATH', '/usr/local/bin/chromedriver')
+            
+            from selenium.webdriver.chrome.service import Service
+            service = Service(chromedriver_path)
+            
+            self.driver = webdriver.Chrome(service=service, options=chrome_options)
             
             # Scripts anti-detección
+            self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+            self.driver.execute_cdp_cmd('Network.setUserAgentOverride', {
+                "userAgent": random.choice(realistic_user_agents)
+            })
             self.driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
                 'source': '''
                     Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
                     Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
-                    Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
+                    Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en', 'es']});
+                    window.chrome = {runtime: {}};
+                    Object.defineProperty(navigator, 'permissions', {get: () => ({query: () => Promise.resolve({state: 'granted'})})});
                 '''
             })
             
@@ -116,18 +134,29 @@ class MultilingualSerpScraper:
             print(f"🔍 Scrapeando SERP para: '{keyword}' en {location}")
             
             for page in range(pages):
-                start = page * 10
+                
+
+                delay = random.uniform(8, 15)  # 8-15 segundos entre requests
+                print(f"⏳ Esperando {delay:.1f} segundos...")
+                time.sleep(delay)
                 
                 # URL correcta con parámetros de país e idioma
                 encoded_keyword = quote_plus(keyword)
-                url = f"https://{country_config['domain']}/search?q={encoded_keyword}&start={start}&gl={country_config['gl']}&hl={country_config['hl']}&num=10"
+                url = f"https://www.google.com/search?q={encoded_keyword}"
                 
-                print(f"📄 Página {page + 1}: {url}")
-                
-                # Delay aleatorio entre requests
-                time.sleep(random.uniform(3, 7))
+                print(f"📄 Accediendo: {url}")
                 
                 self.driver.get(url)
+
+                # ✅ VERIFICAR SI GOOGLE NOS BLOQUEÓ
+                current_url = self.driver.current_url
+                page_title = self.driver.title.lower()
+                
+                if 'sorry' in current_url or 'captcha' in page_title or 'blocked' in page_title:
+                    print("🚫 GOOGLE BLOQUEÓ - Cambiando a fallback")
+                    self.driver.quit()
+                    self.driver = None
+                    return self.get_serp_results_fallback(keyword, location, language, pages)
                 
                 # Esperar que cargue la página
                 try:
