@@ -128,7 +128,7 @@ class MultilingualSerpScraper:
                 oldest_request = min(self._hourly_requests)
                 wait_time = (oldest_request + timedelta(hours=1) - now).total_seconds()
                 if wait_time > 0:
-                    print(f"🚫 Rate limit reached. Waiting {wait_time:.1f} seconds...")
+                    logger.info(f"🚫 Rate limit reached. Waiting {wait_time:.1f} seconds...")
                     time.sleep(wait_time)
             
             # ✅ Verificar delay mínimo entre requests
@@ -136,7 +136,7 @@ class MultilingualSerpScraper:
                 time_since_last = (now - self._last_request_time[endpoint_key]).total_seconds()
                 if time_since_last < self.min_delay_between_requests:
                     wait_time = self.min_delay_between_requests - time_since_last
-                    print(f"⏳ Rate limiting: waiting {wait_time:.1f} seconds...")
+                    logger.info(f"⏳ Rate limiting: waiting {wait_time:.1f} seconds...")
                     time.sleep(wait_time)
             
             # ✅ Registrar este request
@@ -151,14 +151,14 @@ class MultilingualSerpScraper:
         cached_result = self.cache.get(cache_key)
         
         if cached_result:
-            print(f"📋 Cache hit para: {keyword}")
+            logger.info(f"📋 Cache hit para: {keyword}")
             return cached_result
         
-        print(f"🔍 Nueva búsqueda para: '{keyword}' - Aplicando rate limiting...")
+        logger.info(f"🔍 Nueva búsqueda para: '{keyword}' - Aplicando rate limiting...")
         self.enforce_rate_limit(f"serp_{location}")
         
         # ✅ INTENTAR FALLBACK DIRECTO (más efectivo que Selenium)
-        print(f"🚀 Usando método requests optimizado para: '{keyword}'")
+        logger.info(f"🚀 Usando método requests optimizado para: '{keyword}'")
         return self.get_serp_results_optimized(keyword, location, language, pages)
 
     def get_serp_results_optimized(self, keyword, location='US', language=None, pages=1):
@@ -197,7 +197,7 @@ class MultilingualSerpScraper:
                 if page > 0:
                     # Delay extra largo entre páginas
                     delay = random.uniform(20, 35)
-                    print(f"⏳ Delay entre páginas: {delay:.1f} segundos...")
+                    logger.info(f"⏳ Delay entre páginas: {delay:.1f} segundos...")
                     time.sleep(delay)
                 
                 # ✅ URL SIMPLE Y NATURAL
@@ -214,11 +214,11 @@ class MultilingualSerpScraper:
                 if page > 0:
                     params['start'] = page * 10
                 
-                print(f"📄 Página {page + 1}: {url} - Params: {params}")
+                logger.info(f"📄 Página {page + 1}: {url} - Params: {params}")
                 
                 # ✅ DELAY ALEATORIO ANTES DE REQUEST
                 pre_delay = random.uniform(8, 15)
-                print(f"⏳ Pre-request delay: {pre_delay:.1f} segundos...")
+                logger.info(f"⏳ Pre-request delay: {pre_delay:.1f} segundos...")
                 time.sleep(pre_delay)
                 
                 # ✅ HACER REQUEST CON TIMEOUT LARGO
@@ -226,12 +226,12 @@ class MultilingualSerpScraper:
                     response = session.get(url, params=params, timeout=25)
                     
                     if response.status_code != 200:
-                        print(f"❌ HTTP {response.status_code}: {response.reason}")
+                        logger.info(f"❌ HTTP {response.status_code}: {response.reason}")
                         continue
                     
                     # ✅ VERIFICAR BLOQUEOS
                     if self.is_blocked(response):
-                        print("🚫 Google bloqueó el request - Deteniendo scraping")
+                        logger.info("🚫 Google bloqueó el request - Deteniendo scraping")
                         break
                     
                     # ✅ PARSEAR RESULTADOS
@@ -239,7 +239,7 @@ class MultilingualSerpScraper:
                     page_results = self.extract_organic_results_advanced(soup)
                     results['organic_results'].extend(page_results)
                     
-                    print(f"✅ Página {page + 1}: {len(page_results)} resultados extraídos")
+                    logger.info(f"✅ Página {page + 1}: {len(page_results)} resultados extraídos")
                     
                     # ✅ EXTRAER ELEMENTOS ADICIONALES (solo primera página)
                     if page == 0:
@@ -248,7 +248,7 @@ class MultilingualSerpScraper:
                         results['related_searches'] = self.extract_related_searches_bs4(soup)
                     
                 except requests.RequestException as e:
-                    print(f"❌ Error en request: {e}")
+                    logger.info(f"❌ Error en request: {e}")
                     continue
             
             results['total_results'] = len(results['organic_results'])
@@ -257,11 +257,11 @@ class MultilingualSerpScraper:
             cache_duration = 7200 if results['total_results'] > 0 else 1800  # 2h si hay resultados, 30min si no
             self.cache.set(f"serp:{keyword}:{location}:{language}:{pages}", results, cache_duration)
             
-            print(f"🎯 TOTAL FINAL: {results['total_results']} resultados para '{keyword}'")
+            logger.info(f"🎯 TOTAL FINAL: {results['total_results']} resultados para '{keyword}'")
             return results
             
         except Exception as e:
-            print(f"❌ Error general: {e}")
+            logger.info(f"❌ Error general: {e}")
             return results
 
     def get_realistic_headers(self, country_config):
@@ -311,14 +311,14 @@ class MultilingualSerpScraper:
         cached_result = self.cache.get(cache_key)
         
         if cached_result:
-            print(f"📋 Cache hit para: {keyword}")
+            logger.info(f"📋 Cache hit para: {keyword}")
             return cached_result
         
-        print(f"🔍 Nueva búsqueda para: '{keyword}' - Aplicando rate limiting...")
+        logger.info(f"🔍 Nueva búsqueda para: '{keyword}' - Aplicando rate limiting...")
         self.enforce_rate_limit(f"serp_{location}")
         
         # ✅ INTENTAR FALLBACK DIRECTO (más efectivo que Selenium)
-        print(f"🚀 Usando método requests optimizado para: '{keyword}'")
+        logger.info(f"🚀 Usando método requests optimizado para: '{keyword}'")
         return self.get_serp_results_optimized(keyword, location, language, pages)
 
     def get_serp_results_optimized(self, keyword, location='US', language=None, pages=1):
@@ -357,7 +357,7 @@ class MultilingualSerpScraper:
                 if page > 0:
                     # Delay extra largo entre páginas
                     delay = random.uniform(20, 35)
-                    print(f"⏳ Delay entre páginas: {delay:.1f} segundos...")
+                    logger.info(f"⏳ Delay entre páginas: {delay:.1f} segundos...")
                     time.sleep(delay)
                 
                 # ✅ URL SIMPLE Y NATURAL
@@ -374,11 +374,11 @@ class MultilingualSerpScraper:
                 if page > 0:
                     params['start'] = page * 10
                 
-                print(f"📄 Página {page + 1}: {url} - Params: {params}")
+                logger.info(f"📄 Página {page + 1}: {url} - Params: {params}")
                 
                 # ✅ DELAY ALEATORIO ANTES DE REQUEST
                 pre_delay = random.uniform(8, 15)
-                print(f"⏳ Pre-request delay: {pre_delay:.1f} segundos...")
+                logger.info(f"⏳ Pre-request delay: {pre_delay:.1f} segundos...")
                 time.sleep(pre_delay)
                 
                 # ✅ HACER REQUEST CON TIMEOUT LARGO
@@ -386,12 +386,12 @@ class MultilingualSerpScraper:
                     response = session.get(url, params=params, timeout=25)
                     
                     if response.status_code != 200:
-                        print(f"❌ HTTP {response.status_code}: {response.reason}")
+                        logger.info(f"❌ HTTP {response.status_code}: {response.reason}")
                         continue
                     
                     # ✅ VERIFICAR BLOQUEOS
                     if self.is_blocked(response):
-                        print("🚫 Google bloqueó el request - Deteniendo scraping")
+                        logger.info("🚫 Google bloqueó el request - Deteniendo scraping")
                         break
                     
                     # ✅ PARSEAR RESULTADOS
@@ -399,7 +399,7 @@ class MultilingualSerpScraper:
                     page_results = self.extract_organic_results_advanced(soup)
                     results['organic_results'].extend(page_results)
                     
-                    print(f"✅ Página {page + 1}: {len(page_results)} resultados extraídos")
+                    logger.info(f"✅ Página {page + 1}: {len(page_results)} resultados extraídos")
                     
                     # ✅ EXTRAER ELEMENTOS ADICIONALES (solo primera página)
                     if page == 0:
@@ -408,7 +408,7 @@ class MultilingualSerpScraper:
                         results['related_searches'] = self.extract_related_searches_bs4(soup)
                     
                 except requests.RequestException as e:
-                    print(f"❌ Error en request: {e}")
+                    logger.info(f"❌ Error en request: {e}")
                     continue
             
             results['total_results'] = len(results['organic_results'])
@@ -417,11 +417,11 @@ class MultilingualSerpScraper:
             cache_duration = 7200 if results['total_results'] > 0 else 1800  # 2h si hay resultados, 30min si no
             self.cache.set(f"serp:{keyword}:{location}:{language}:{pages}", results, cache_duration)
             
-            print(f"🎯 TOTAL FINAL: {results['total_results']} resultados para '{keyword}'")
+            logger.info(f"🎯 TOTAL FINAL: {results['total_results']} resultados para '{keyword}'")
             return results
             
         except Exception as e:
-            print(f"❌ Error general: {e}")
+            logger.info(f"❌ Error general: {e}")
             return results
 
     def get_realistic_headers(self, country_config):
@@ -485,13 +485,13 @@ class MultilingualSerpScraper:
                     elements = soup.select(selector)
                     if len(elements) >= 3:  # Al menos 3 resultados válidos
                         result_elements = elements
-                        print(f"✅ Usando selector exitoso: {selector} ({len(elements)} elementos)")
+                        logger.info(f"✅ Usando selector exitoso: {selector} ({len(elements)} elementos)")
                         break
                 except Exception as e:
                     continue
             
             if not result_elements:
-                print("⚠️ No se encontraron elementos con selectores estándar")
+                logger.info("⚠️ No se encontraron elementos con selectores estándar")
                 return results
             
             for element in result_elements[:10]:  # Top 10
@@ -518,14 +518,14 @@ class MultilingualSerpScraper:
                     })
                     
                     position += 1
-                    print(f"  ✅ Resultado {position-1}: {title[:60]}...")
+                    logger.info(f"  ✅ Resultado {position-1}: {title[:60]}...")
                     
                 except Exception as e:
-                    print(f"⚠️ Error procesando elemento: {e}")
+                    logger.info(f"⚠️ Error procesando elemento: {e}")
                     continue
             
         except Exception as e:
-            print(f"❌ Error en extracción avanzada: {e}")
+            logger.info(f"❌ Error en extracción avanzada: {e}")
         
         return results
 
@@ -902,7 +902,7 @@ class MultilingualSerpScraper:
         cx = os.environ.get('GOOGLE_CX')  # Custom Search Engine ID
         
         if not api_key or not cx:
-            print("⚠️ Google API credentials not configured")
+            logger.info("⚠️ Google API credentials not configured")
             return None
         
         if not language:
@@ -937,18 +937,18 @@ class MultilingualSerpScraper:
                     'gl': location.lower()
                 }
                 
-                print(f"📡 Google API request for '{keyword}' - página {page + 1}")
+                logger.info(f"📡 Google API request for '{keyword}' - página {page + 1}")
                 
                 response = requests.get(url, params=params, timeout=15)
                 
                 if response.status_code != 200:
-                    print(f"❌ Google API error: {response.status_code}")
+                    logger.info(f"❌ Google API error: {response.status_code}")
                     break
                 
                 data = response.json()
                 
                 if 'items' not in data:
-                    print("⚠️ No items in Google API response")
+                    logger.info("⚠️ No items in Google API response")
                     break
                 
                 # Procesar resultados
@@ -963,7 +963,7 @@ class MultilingualSerpScraper:
                         'domain': self.extract_domain(item.get('link', ''))
                     })
                 
-                print(f"✅ Google API: {len(data['items'])} resultados de página {page + 1}")
+                logger.info(f"✅ Google API: {len(data['items'])} resultados de página {page + 1}")
                 
                 # Delay entre páginas de API
                 if page < pages - 1:
@@ -976,11 +976,11 @@ class MultilingualSerpScraper:
                 cache_key = f"serp_api:{keyword}:{location}:{language}:{pages}"
                 self.cache.set(cache_key, results, 14400)  # 4 horas
             
-            print(f"🎯 Google API TOTAL: {results['total_results']} resultados")
+            logger.info(f"🎯 Google API TOTAL: {results['total_results']} resultados")
             return results
             
         except Exception as e:
-            print(f"❌ Error en Google API: {e}")
+            logger.info(f"❌ Error en Google API: {e}")
             return None
 
     # ✅ MÉTODO PRINCIPAL ACTUALIZADO CON FALLBACKS INTELIGENTES
@@ -992,28 +992,28 @@ class MultilingualSerpScraper:
         cached_result = self.cache.get(cache_key)
         
         if cached_result:
-            print(f"📋 Cache hit para: {keyword}")
+            logger.info(f"📋 Cache hit para: {keyword}")
             return cached_result
         
-        print(f"🔍 Nueva búsqueda para: '{keyword}' en {location}")
+        logger.info(f"🔍 Nueva búsqueda para: '{keyword}' en {location}")
         
         # 2. Intentar método optimizado (requests)
         results = self.get_serp_results_optimized(keyword, location, language, pages)
         
         if results and results['total_results'] > 0:
-            print(f"✅ Método optimizado exitoso: {results['total_results']} resultados")
+            logger.info(f"✅ Método optimizado exitoso: {results['total_results']} resultados")
             return results
         
         # 3. Fallback a Google Custom Search API
-        print("🔄 Fallback a Google API...")
+        logger.info("🔄 Fallback a Google API...")
         api_results = self.get_serp_google_api(keyword, location, language, min(pages, 1))  # API limitado a 1 página
         
         if api_results and api_results['total_results'] > 0:
-            print(f"✅ Google API exitoso: {api_results['total_results']} resultados")
+            logger.info(f"✅ Google API exitoso: {api_results['total_results']} resultados")
             return api_results
         
         # 4. Último fallback - resultados vacíos con estructura correcta
-        print("⚠️ Todos los métodos fallaron - retornando estructura vacía")
+        logger.info("⚠️ Todos los métodos fallaron - retornando estructura vacía")
         return {
             'keyword': keyword,
             'language': language or 'en',
