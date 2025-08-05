@@ -252,10 +252,10 @@ def keyword_suggestions():
         return handle_error(e)
 
 @app.route('/competitors/analyze', methods=['POST'])
-@limiter.limit("3 per minute")
+@limiter.limit("3 per minute")  
 @require_api_key
 def analyze_competitors():
-    """Análisis de competidores basado en keywords - RESTAURADO + análisis opcional de términos"""
+    """Análisis optimizado SIN duplicar calls"""
     try:
         data = request.get_json()
         
@@ -263,47 +263,26 @@ def analyze_competitors():
             return jsonify({'error': 'Missing required fields'}), 400
         
         keywords = data['keywords']
-        my_domain = data['my_domain']
-        top_n = min(data.get('top_competitors', 5), 10)
-        
-        # Campos opcionales para nueva funcionalidad
+        my_domain = data['my_domain'] 
         content = data.get('content', '')
         
-        logger.info(f"Analyzing competitors for keywords: {keywords}")
+        logger.info(f"Análisis optimizado para: {keywords}")
         
-        # TU ANÁLISIS ORIGINAL QUE FUNCIONA (sin cambiar nada)
-        analysis = content_analyzer.analyze_competitors(keywords, my_domain, top_n)
+        # UNA SOLA LLAMADA que hace todo
+        if content:
+            analysis = content_analyzer.analyze_competitors_with_terms(keywords, my_domain, content)
+        else:
+            analysis = content_analyzer.analyze_competitors(keywords, my_domain)
         
-        # NUEVO: Si se proporciona contenido, agregar análisis de términos
-        if content and len(content) > 100:
-            logger.info("Adding term frequency analysis")
-            try:
-                # Usar los competidores reales que ya encontraste
-                term_analysis = content_analyzer.analyze_competitors_with_terms(
-                    keywords, my_domain, content, top_n
-                )
-                
-                # Agregar solo si fue exitoso
-                if term_analysis and 'term_frequency_analysis' in term_analysis:
-                    analysis['term_frequency_analysis'] = term_analysis['term_frequency_analysis']
-                    logger.info("Term frequency analysis added successfully")
-                
-            except Exception as e:
-                logger.info(f"Term analysis failed (non-critical): {e}")
-                # Continuar sin análisis de términos
-        
-        logger.info(f"Competitor analysis complete: {analysis}")
-        
-        # RESPUESTA ORIGINAL (sin cambiar formato)
         return jsonify({
             'success': True,
-            'data': analysis,  # Tu estructura original
+            'data': analysis,
             'timestamp': datetime.now().isoformat()
         })
         
     except Exception as e:
-        logger.error(f"Error in competitor analysis: {str(e)}")
-        return handle_error(e)
+        logger.error(f"Error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 @app.errorhandler(429)
 def ratelimit_handler(e):

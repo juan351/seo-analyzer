@@ -1783,55 +1783,101 @@ class MultilingualContentAnalyzer:
     # AGREGAR ESTOS MÉTODOS A TU CÓDIGO ORIGINAL (no reemplazar nada)
 
     def analyze_competitors_with_terms(self, keywords, my_domain, my_content, top_n=5):
-        """
-        Versión mejorada de analyze_competitors que AGREGA análisis de términos
-        SIN romper la funcionalidad original
-        """
+        """Versión optimizada sin duplicar calls"""
         try:
-            # 1. Usar tu método original que funciona perfectamente
-            original_analysis = self.analyze_competitors(keywords, my_domain, top_n)
-            
-            if original_analysis.get('error'):
-                return original_analysis  # Devolver error si hay problema
-            
-            # 2. AGREGAR análisis de términos usando los competidores reales encontrados
+            # USAR SOLO UNA LLAMADA A SERP
             language = self.language_detector.detect_language(my_content)
+            
+            # ✅ Configurar ubicación correcta según idioma
+            location = 'ES' if language == 'es' else 'US'
+            
+            logger.info(f"🏆 Análisis optimizado para idioma: {language}, ubicación: {location}")
+            
+            # UNA SOLA LLAMADA a la API
+            from ..services.serp_scraper import MultilingualSerpScraper
+            serp_scraper = MultilingualSerpScraper(self.cache)
+            
+            # Usar solo la primera keyword para evitar múltiples calls
+            main_keyword = keywords[0]
+            serp_results = serp_scraper.get_serp_results(
+                main_keyword,
+                location=location,
+                language=language,
+                pages=1
+            )
+            
+            if not serp_results or 'organic_results' not in serp_results:
+                return {'error': 'No SERP results found'}
+            
+            # Procesar resultados y hacer análisis
+            competitors = []
             competitors_with_content = []
             
-            # Usar los URLs reales que tu método original ya encontró
-            for keyword, competitors in original_analysis.get('competitors_by_keyword', {}).items():
-                for comp in competitors[:2]:  # Top 2 por keyword para no sobrecargar
-                    content = self.scrape_content(comp['url'])  # Tu método de scraping que funciona
-                    if content and len(content) > 300:
-                        competitors_with_content.append({
-                            'url': comp['url'],
-                            'content': content,
-                            'title': comp['title'],
-                            'domain': comp['domain']
-                        })
+            for result in serp_results['organic_results'][:5]:
+                url = result.get('link', '')
+                if url and my_domain not in url:
+                    competitors.append({
+                        'domain': urlparse(url).netloc,
+                        'url': url,
+                        'title': result.get('title', ''),
+                        'position': result.get('position', 0),
+                        'snippet': result.get('snippet', '')
+                    })
                     
-                    if len(competitors_with_content) >= 5:  # Límite
-                        break
+                    # Scraping con límite de tiempo
+                    if len(competitors_with_content) < 3:  # Solo top 3
+                        content = self.scrape_content_fast(url)  # Versión más rápida
+                        if content and len(content) > 300:
+                            competitors_with_content.append({
+                                'url': url, 'content': content, 'title': result.get('title', '')
+                            })
             
-            # 3. Análisis de términos solo si tenemos contenido de competidores
+            # Análisis de términos
+            term_analysis = None
             if competitors_with_content:
                 term_analysis = self.analyze_terms_from_real_competitors(
                     my_content, keywords, competitors_with_content, language
                 )
-                
-                # Agregar a la respuesta original
-                enhanced_analysis = original_analysis.copy()
-                enhanced_analysis['term_frequency_analysis'] = term_analysis
-                return enhanced_analysis
             
-            else:
-                # Si no hay contenido, devolver análisis original sin términos
-                return original_analysis
-                
+            # Respuesta unificada
+            return {
+                'keywords_analyzed': keywords,
+                'my_domain': my_domain,
+                'competitors_by_keyword': {keywords[0]: competitors},
+                'unique_competitors': [{'domain': comp['domain'], 'urls': [comp['url']], 'titles': [comp['title']]} for comp in competitors],
+                'total_competitors_found': len(competitors),
+                'term_frequency_analysis': term_analysis or {},
+                'analysis_summary': {
+                    'avg_competitors_per_keyword': len(competitors),
+                    'most_common_competitors': [{'domain': comp['domain'], 'appearances': 1} for comp in competitors[:5]]
+                }
+            }
+            
         except Exception as e:
-            logger.info(f"Error en análisis con términos: {e}")
-            # En caso de error, devolver análisis original
-            return self.analyze_competitors(keywords, my_domain, top_n)
+            logger.error(f"Error en análisis optimizado: {e}")
+            return {'error': str(e)}
+
+    def scrape_content_fast(self, url, timeout=5):
+        """Scraping rápido con timeout corto"""
+        try:
+            response = requests.get(url, headers=self.headers, timeout=timeout)
+            response.raise_for_status()
+            
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # Scraping muy básico y rápido
+            for script in soup(["script", "style"]):
+                script.decompose()
+            
+            # Solo contenido principal
+            main_content = soup.find('article') or soup.find('main') or soup.find('body')
+            if main_content:
+                text = main_content.get_text(strip=True)[:3000]  # Límite de caracteres
+                return re.sub(r'\s+', ' ', text)
+            
+            return ""
+        except:
+            return ""
 
     def analyze_terms_from_real_competitors(self, my_content, keywords, competitors_content, language):
         """Análisis COMPLETO tipo Surfer SEO usando competidores reales"""
