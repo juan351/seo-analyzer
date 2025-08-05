@@ -16,10 +16,11 @@ RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key
     && apt-get install -y google-chrome-stable \
     && rm -rf /var/lib/apt/lists/*
 
-# ✅ AGREGADO - Instalar ChromeDriver manualmente
-RUN CHROME_VERSION=$(google-chrome --version | grep -oP '\d+') \
-    && echo "Chrome version: $CHROME_VERSION" \
-    && wget -O /tmp/chromedriver.zip "https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VERSION}.0.0.0/linux64/chromedriver-linux64.zip" \
+# ✅ CORREGIDO - Instalar ChromeDriver con regex corregido
+RUN CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+' | head -1) \
+    && CHROME_MAJOR=$(echo $CHROME_VERSION | cut -d. -f1) \
+    && echo "Chrome version: $CHROME_VERSION, Major: $CHROME_MAJOR" \
+    && wget -O /tmp/chromedriver.zip "https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VERSION}/linux64/chromedriver-linux64.zip" \
     && unzip /tmp/chromedriver.zip -d /tmp/ \
     && mv /tmp/chromedriver-linux64/chromedriver /usr/local/bin/chromedriver \
     && chmod 755 /usr/local/bin/chromedriver \
@@ -43,17 +44,17 @@ RUN python -c "import nltk; \
     nltk.download('stopwords'); \
     nltk.download('wordnet');"
 
-# ✅ AGREGADO - Crear directorios para Chrome con permisos correctos
+# Crear directorios para Chrome con permisos correctos
 RUN mkdir -p /tmp/chrome-user-data \
     && chmod 777 /tmp/chrome-user-data \
     && mkdir -p /app/logs \
     && chmod 777 /app/logs
 
-# ✅ MEJORADO - Crear usuario no-root con grupos adicionales
+# Crear usuario no-root con grupos adicionales
 RUN adduser --disabled-password --gecos '' appuser \
     && usermod -a -G audio,video appuser
 
-# ✅ AGREGADO - Crear directorio de cache y dar permisos
+# Crear directorio de cache y dar permisos
 RUN mkdir -p /home/appuser/.cache \
     && mkdir -p /home/appuser/.local \
     && chown -R appuser:appuser /home/appuser
@@ -61,13 +62,13 @@ RUN mkdir -p /home/appuser/.cache \
 COPY . .
 RUN chown -R appuser:appuser /app
 
-# ✅ AGREGADO - Dar permisos de ejecución a Chrome para appuser
+# Dar permisos de ejecución a Chrome para appuser
 RUN chmod 755 /opt/google/chrome/chrome \
     && chmod 755 /usr/bin/google-chrome*
 
 USER appuser
 
-# ✅ AGREGADO - Variables de entorno para Chrome
+# Variables de entorno para Chrome
 ENV DISPLAY=:99
 ENV CHROME_BIN=/usr/bin/google-chrome-stable
 ENV CHROMEDRIVER_PATH=/usr/local/bin/chromedriver
