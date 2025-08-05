@@ -10,6 +10,11 @@ import socket
 from urllib.request import urlopen
 import gzip
 from io import BytesIO
+import logging
+
+# Logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class PerformanceAnalyzer:
     def __init__(self):
@@ -24,7 +29,7 @@ class PerformanceAnalyzer:
     def analyze_url(self, url):
         """Análisis completo y realista de rendimiento de URL"""
         try:
-            print(f"🔍 Analizando rendimiento de: {url}")
+            logger.info(f"🔍 Analizando rendimiento de: {url}")
             
             analysis = {
                 'url': url,
@@ -45,7 +50,7 @@ class PerformanceAnalyzer:
                 if psi_data:
                     analysis['pagespeed_insights'] = psi_data
             except Exception as e:
-                print(f"⚠️ No se pudo obtener PageSpeed Insights: {e}")
+                logger.info(f"⚠️ No se pudo obtener PageSpeed Insights: {e}")
             
             # Calcular puntuación general
             analysis['performance_score'] = self.calculate_performance_score(analysis)
@@ -53,11 +58,11 @@ class PerformanceAnalyzer:
             # Generar recomendaciones
             analysis['recommendations'] = self.generate_performance_recommendations(analysis)
             
-            print(f"✅ Análisis completado. Score: {analysis['performance_score']}/100")
+            logger.info(f"✅ Análisis completado. Score: {analysis['performance_score']}/100")
             return analysis
             
         except Exception as e:
-            print(f"❌ Error analizando URL: {e}")
+            logger.info(f"❌ Error analizando URL: {e}")
             return {'url': url, 'error': str(e)}
 
     def analyze_loading_performance(self, url):
@@ -101,7 +106,7 @@ class PerformanceAnalyzer:
                     time.sleep(1)  # Delay entre mediciones
                     
                 except Exception as e:
-                    print(f"Error en medición {i+1}: {e}")
+                    logger.info(f"Error en medición {i+1}: {e}")
                     continue
             
             if response_times:
@@ -121,7 +126,7 @@ class PerformanceAnalyzer:
             return performance_data
             
         except Exception as e:
-            print(f"Error analizando rendimiento de carga: {e}")
+            logger.info(f"Error analizando rendimiento de carga: {e}")
             return {'error': str(e)}
 
     def get_pagespeed_insights(self, url, api_key=None):
@@ -160,7 +165,7 @@ class PerformanceAnalyzer:
                 }
             
         except Exception as e:
-            print(f"Error obteniendo PageSpeed Insights: {e}")
+            logger.info(f"Error obteniendo PageSpeed Insights: {e}")
         
         return None
 
@@ -304,7 +309,7 @@ class PerformanceAnalyzer:
             }
             
         except Exception as e:
-            print(f"Error analizando estructura: {e}")
+            logger.info(f"Error analizando estructura: {e}")
             return {'error': str(e)}
 
     def analyze_resources(self, url):
@@ -406,7 +411,7 @@ class PerformanceAnalyzer:
             }
             
         except Exception as e:
-            print(f"Error analizando recursos: {e}")
+            logger.info(f"Error analizando recursos: {e}")
             return {'error': str(e)}
 
     def analyze_security(self, url):
@@ -442,7 +447,7 @@ class PerformanceAnalyzer:
             }
             
         except Exception as e:
-            print(f"Error analizando seguridad: {e}")
+            logger.info(f"Error analizando seguridad: {e}")
             return {'error': str(e)}
 
     def get_security_grade(self, percentage):
@@ -504,7 +509,7 @@ class PerformanceAnalyzer:
             return mobile_analysis
             
         except Exception as e:
-            print(f"Error analizando mobile-friendliness: {e}")
+            logger.info(f"Error analizando mobile-friendliness: {e}")
             return {'error': str(e)}
 
     def analyze_seo_elements(self, url):
@@ -636,7 +641,7 @@ class PerformanceAnalyzer:
             }
             
         except Exception as e:
-            print(f"Error analizando elementos SEO: {e}")
+            logger.info(f"Error analizando elementos SEO: {e}")
             return {'error': str(e)}
 
     def calculate_performance_score(self, analysis):
@@ -704,7 +709,7 @@ class PerformanceAnalyzer:
             return min(round(score), max_score)
             
         except Exception as e:
-            print(f"Error calculando score: {e}")
+            logger.info(f"Error calculando score: {e}")
             return 0
 
     def generate_performance_recommendations(self, analysis):
@@ -1038,7 +1043,7 @@ class PerformanceAnalyzer:
             return recommendations
             
         except Exception as e:
-            print(f"Error generando recomendaciones: {e}")
+            logger.info(f"Error generando recomendaciones: {e}")
             return [{
                 'type': 'error',
                 'priority': 'low',

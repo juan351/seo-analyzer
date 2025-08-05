@@ -11,6 +11,11 @@ import json
 import time
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+import logging
+
+# Logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class BacklinkAnalyzer:
     def __init__(self, cache_manager):
@@ -39,12 +44,12 @@ class BacklinkAnalyzer:
         cached_result = self.cache.get(cache_key)
         
         if cached_result:
-            print(f"📋 Usando análisis cached para: {domain}")
+            logger.info(f"📋 Usando análisis cached para: {domain}")
             return cached_result
         
         # Limpiar dominio
         clean_domain = self.clean_domain(domain)
-        print(f"🔍 Analizando dominio: {clean_domain}")
+        logger.info(f"🔍 Analizando dominio: {clean_domain}")
         
         analysis = {
             'domain': clean_domain,
@@ -61,7 +66,7 @@ class BacklinkAnalyzer:
         
         # Cache por 12 horas (los backlinks no cambian tan rápido)
         self.cache.set(cache_key, analysis, 43200)
-        print(f"✅ Análisis completado para: {clean_domain}")
+        logger.info(f"✅ Análisis completado para: {clean_domain}")
         return analysis
 
     def clean_domain(self, domain):
@@ -76,7 +81,7 @@ class BacklinkAnalyzer:
     def estimate_domain_authority(self, domain):
         """Estimación mejorada de autoridad de dominio"""
         try:
-            print(f"📊 Calculando autoridad de dominio para: {domain}")
+            logger.info(f"📊 Calculando autoridad de dominio para: {domain}")
             score = 0
             factors = {}
             
@@ -122,7 +127,7 @@ class BacklinkAnalyzer:
             }
             
         except Exception as e:
-            print(f"❌ Error calculando autoridad: {e}")
+            logger.info(f"❌ Error calculando autoridad: {e}")
             return {
                 'domain_authority_score': 0,
                 'factors': {},
@@ -145,14 +150,14 @@ class BacklinkAnalyzer:
                 google_count = self.count_google_domain_mentions(domain)
                 methods['google_mentions'] = google_count
             except Exception as e:
-                print(f"Error Google mentions: {e}")
+                logger.info(f"Error Google mentions: {e}")
             
             # Método 2: Análisis de menciones en sitios conocidos
             try:
                 domain_refs = self.find_domain_references(domain)
                 methods['domain_mentions'] = len(domain_refs)
             except Exception as e:
-                print(f"Error domain mentions: {e}")
+                logger.info(f"Error domain mentions: {e}")
             
             # Método 3: Menciones sociales como proxy
             try:
@@ -160,14 +165,14 @@ class BacklinkAnalyzer:
                 social_total = social_data.get('total_social_signals', 0)
                 methods['social_mentions'] = min(social_total, 100)  # Cap social signals
             except Exception as e:
-                print(f"Error social mentions: {e}")
+                logger.info(f"Error social mentions: {e}")
             
             # Método 4: Directorios y listings
             try:
                 directory_count = self.count_directory_listings(domain)
                 methods['directory_listings'] = directory_count
             except Exception as e:
-                print(f"Error directory listings: {e}")
+                logger.info(f"Error directory listings: {e}")
             
             # Calcular estimación combinada
             total_estimated = sum(methods.values())
@@ -183,7 +188,7 @@ class BacklinkAnalyzer:
             }
             
         except Exception as e:
-            print(f"Error estimating backlinks: {e}")
+            logger.info(f"Error estimating backlinks: {e}")
             return {
                 'estimated_count': 0,
                 'methods': {},
@@ -219,7 +224,7 @@ class BacklinkAnalyzer:
             return 10  # Baseline mínimo
             
         except Exception as e:
-            print(f"Error counting Google mentions: {e}")
+            logger.info(f"Error counting Google mentions: {e}")
             return 5
 
     def analyze_domain_factors(self, domain):
@@ -288,7 +293,7 @@ class BacklinkAnalyzer:
                 time.sleep(0.5)  # Rate limiting
                 
             except Exception as e:
-                print(f"Error searching {site}: {e}")
+                logger.info(f"Error searching {site}: {e}")
                 continue
         
         return references
@@ -351,7 +356,7 @@ class BacklinkAnalyzer:
             return listing_count * 5  # Cada listing vale 5 mentions estimadas
             
         except Exception as e:
-            print(f"Error counting directory listings: {e}")
+            logger.info(f"Error counting directory listings: {e}")
             return 0
 
     def check_directory_presence(self, domain, directory):
@@ -394,7 +399,7 @@ class BacklinkAnalyzer:
                 return age
                 
         except Exception as e:
-            print(f"Error obteniendo edad de dominio: {e}")
+            logger.info(f"Error obteniendo edad de dominio: {e}")
         
         return None
 
@@ -438,7 +443,7 @@ class BacklinkAnalyzer:
             return min(score, 20)  # Max 20 puntos
             
         except Exception as e:
-            print(f"Error calculando technical SEO score: {e}")
+            logger.info(f"Error calculando technical SEO score: {e}")
             return 0
 
     def get_security_headers_score(self, domain):
@@ -529,7 +534,7 @@ class BacklinkAnalyzer:
             return min(score, 10)
             
         except Exception as e:
-            print(f"Error estimating content authority: {e}")
+            logger.info(f"Error estimating content authority: {e}")
             return 0
 
     def get_social_authority_score(self, domain):
@@ -554,7 +559,7 @@ class BacklinkAnalyzer:
             return round(score, 1)
             
         except Exception as e:
-            print(f"Error calculating social authority: {e}")   
+            logger.info(f"Error calculating social authority: {e}")   
             return 0
 
     def get_social_signals(self, domain):
@@ -575,21 +580,21 @@ class BacklinkAnalyzer:
                 fb_data = self.get_facebook_shares(url)
                 social_data.update(fb_data)
             except Exception as e:
-                print(f"Error Facebook data: {e}")
+                logger.info(f"Error Facebook data: {e}")
             
             # Twitter menciones (API v2 o método alternativo)
             try:
                 twitter_data = self.get_twitter_mentions_alternative(domain)
                 social_data['twitter_mentions'] = twitter_data.get('mentions', 0)
             except Exception as e:
-                print(f"Error Twitter data: {e}")
+                logger.info(f"Error Twitter data: {e}")
             
             # LinkedIn (básico)
             try:
                 linkedin_data = self.get_linkedin_shares(url)
                 social_data['linkedin_shares'] = linkedin_data.get('shares', 0)
             except Exception as e:
-                print(f"Error LinkedIn data: {e}")
+                logger.info(f"Error LinkedIn data: {e}")
             
             # Calcular total
             social_data['total_social_signals'] = (
@@ -602,7 +607,7 @@ class BacklinkAnalyzer:
             return social_data
             
         except Exception as e:
-            print(f"Error getting social signals: {e}")
+            logger.info(f"Error getting social signals: {e}")
             return {
                 'facebook_shares': 0,
                 'facebook_likes': 0,
@@ -630,7 +635,7 @@ class BacklinkAnalyzer:
                 }
                 
         except Exception as e:
-            print(f"Error getting Facebook shares: {e}")
+            logger.info(f"Error getting Facebook shares: {e}")
         
         return {'facebook_shares': 0, 'facebook_likes': 0, 'facebook_comments': 0}
 
@@ -656,7 +661,7 @@ class BacklinkAnalyzer:
             return {'mentions': base_mentions}
             
         except Exception as e:
-            print(f"Error getting Twitter mentions: {e}")
+            logger.info(f"Error getting Twitter mentions: {e}")
             return {'mentions': 0}
 
     def check_twitter_profile_exists(self, domain):
@@ -684,7 +689,7 @@ class BacklinkAnalyzer:
 
     def find_backlink_sources(self, domain):
         """Encontrar fuentes reales de backlinks"""
-        print(f"🔗 Buscando fuentes de backlinks para: {domain}")
+        logger.info(f"🔗 Buscando fuentes de backlinks para: {domain}")
         
         sources = []
         
@@ -712,7 +717,7 @@ class BacklinkAnalyzer:
             return sorted_sources[:25]  # Top 25 fuentes
             
         except Exception as e:
-            print(f"Error finding backlink sources: {e}")
+            logger.info(f"Error finding backlink sources: {e}")
             return []
 
     def search_authority_mentions(self, domain):
@@ -745,7 +750,7 @@ class BacklinkAnalyzer:
                 time.sleep(0.5)  # Rate limiting
                 
             except Exception as e:
-                print(f"Error checking {site}: {e}")
+                logger.info(f"Error checking {site}: {e}")
                 continue
         
         return mentions
@@ -960,7 +965,7 @@ class BacklinkAnalyzer:
     def analyze_competitors(self, domain):
         """Analizar competidores del dominio"""
         try:
-            print(f"🏆 Analizando competidores de: {domain}")
+            logger.info(f"🏆 Analizando competidores de: {domain}")
             
             competitors = self.find_similar_domains(domain)
             competitor_analysis = []
@@ -980,7 +985,7 @@ class BacklinkAnalyzer:
                     time.sleep(1)  # Rate limiting
                     
                 except Exception as e:
-                    print(f"Error analizando competidor {competitor}: {e}")
+                    logger.info(f"Error analizando competidor {competitor}: {e}")
                     continue
             
             return {
@@ -990,7 +995,7 @@ class BacklinkAnalyzer:
             }
             
         except Exception as e:
-            print(f"Error en análisis de competidores: {e}")
+            logger.info(f"Error en análisis de competidores: {e}")
             return {'competitors_found': 0, 'competitors': []}
 
     def find_similar_domains(self, domain):
@@ -1020,7 +1025,7 @@ class BacklinkAnalyzer:
             return similar_domains[:5]  # Limitar a 5 competidores
             
         except Exception as e:
-            print(f"Error finding similar domains: {e}")
+            logger.info(f"Error finding similar domains: {e}")
             return []
 
     def domain_exists(self, domain):
@@ -1091,7 +1096,7 @@ class BacklinkAnalyzer:
     def find_link_opportunities(self, domain):
         """Encontrar oportunidades de link building"""
         try:
-            print(f"💡 Buscando oportunidades de link building para: {domain}")
+            logger.info(f"💡 Buscando oportunidades de link building para: {domain}")
             
             opportunities = []
             
@@ -1121,7 +1126,7 @@ class BacklinkAnalyzer:
             }
             
         except Exception as e:
-            print(f"Error finding link opportunities: {e}")
+            logger.info(f"Error finding link opportunities: {e}")
             return {'total_opportunities': 0, 'opportunities': []}
 
     def find_directory_opportunities(self, domain):
@@ -1343,7 +1348,7 @@ class BacklinkAnalyzer:
     def analyze_technical_seo(self, domain):
         """Análisis técnico SEO completo del dominio"""
         try:
-            print(f"🔧 Analizando SEO técnico de: {domain}")
+            logger.info(f"🔧 Analizando SEO técnico de: {domain}")
             
             technical_analysis = {
                 'ssl_certificate': self.analyze_ssl_certificate(domain),
@@ -1953,13 +1958,13 @@ class BacklinkAnalyzer:
             return domain_info
             
         except Exception as e:
-            print(f"Error obteniendo info del dominio: {e}")
+            logger.info(f"Error obteniendo info del dominio: {e}")
             return {'error': str(e)}
 
     def analyze_trust_signals(self, domain):
         """Análisis completo de señales de confianza"""
         try:
-            print(f"🛡️ Analizando señales de confianza para: {domain}")
+            logger.info(f"🛡️ Analizando señales de confianza para: {domain}")
             
             trust_signals = {
                 'whois_transparency': self.analyze_whois_transparency(domain),
@@ -2286,7 +2291,7 @@ class BacklinkAnalyzer:
             return min(round(total_score), 100)
             
         except Exception as e:
-            print(f"Error calculating trust score: {e}")
+            logger.info(f"Error calculating trust score: {e}")
             return 0
 
     def get_trust_level(self, trust_score):

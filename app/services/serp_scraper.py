@@ -10,6 +10,11 @@ import random
 import requests
 from urllib.parse import quote_plus
 from ..utils.language_detector import LanguageDetector
+import logging
+
+# Logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class MultilingualSerpScraper:
     def __init__(self, cache_manager):
@@ -87,27 +92,27 @@ class MultilingualSerpScraper:
                 '''
             })
             
-            print("✅ Driver Selenium configurado correctamente")
+            logger.info("✅ Driver Selenium configurado correctamente")
             
         except Exception as e:
-            print(f"❌ Error configurando driver: {e}")
+            logger.info(f"❌ Error configurando driver: {e}")
             self.driver = None
 
     def get_serp_results(self, keyword, location='US', language=None, pages=1):
         """Scraping SERP completo y funcional"""
-        print(f"🔍 INICIO - Scrapeando SERP para: '{keyword}' en {location}")
+        logger.info(f"🔍 INICIO - Scrapeando SERP para: '{keyword}' en {location}")
         # Detectar idioma si no se proporciona
         if not language:
             language = self.language_detector.detect_language(keyword)
         
         # Obtener configuración del país
         country_config = self.country_configs.get(location, self.country_configs['US'])
-        print(f"🌍 Configuración país: {country_config}")
+        logger.info(f"🌍 Configuración país: {country_config}")
         cache_key = f"serp:{keyword}:{location}:{language}:{pages}"
         cached_result = self.cache.get(cache_key)
         
         if cached_result:
-            print(f"📋 Usando SERP cached para: {keyword}")
+            logger.info(f"📋 Usando SERP cached para: {keyword}")
             return cached_result
         
         results = {
@@ -124,28 +129,28 @@ class MultilingualSerpScraper:
         
         try:
             # Configurar driver si no existe
-            print(f"🚗 Estado del driver: {self.driver}")
+            logger.info(f"🚗 Estado del driver: {self.driver}")
             if not self.driver:
                 self.setup_driver()
             
             if not self.driver:
-                print("❌ No se pudo configurar el driver")
+                logger.info("❌ No se pudo configurar el driver")
                 return results
             
-            print(f"✅ Driver configurado: {type(self.driver)}")
+            logger.info(f"✅ Driver configurado: {type(self.driver)}")
             
             for page in range(pages):
                 
 
                 delay = random.uniform(8, 15)  # 8-15 segundos entre requests
-                print(f"⏳ Esperando {delay:.1f} segundos...")
+                logger.info(f"⏳ Esperando {delay:.1f} segundos...")
                 time.sleep(delay)
                 
                 # URL correcta con parámetros de país e idioma
                 encoded_keyword = quote_plus(keyword)
                 url = f"https://www.google.com/search?q={encoded_keyword}"
                 
-                print(f"📄 Accediendo: {url}")
+                logger.info(f"📄 Accediendo: {url}")
                 
                 self.driver.get(url)
 
@@ -154,7 +159,7 @@ class MultilingualSerpScraper:
                 page_title = self.driver.title.lower()
                 
                 if 'sorry' in current_url or 'captcha' in page_title or 'blocked' in page_title:
-                    print("🚫 GOOGLE BLOQUEÓ - Cambiando a fallback")
+                    logger.info("🚫 GOOGLE BLOQUEÓ - Cambiando a fallback")
                     self.driver.quit()
                     self.driver = None
                     return self.get_serp_results_fallback(keyword, location, language, pages)
@@ -165,7 +170,7 @@ class MultilingualSerpScraper:
                         EC.presence_of_element_located((By.CSS_SELECTOR, 'div.g, div[data-ved]'))
                     )
                 except TimeoutException:
-                    print("⏰ Timeout esperando resultados")
+                    logger.info("⏰ Timeout esperando resultados")
                     continue
                 
                 # Extraer resultados orgánicos
@@ -178,19 +183,19 @@ class MultilingualSerpScraper:
                     results['people_also_ask'] = self.extract_people_also_ask()
                     results['related_searches'] = self.extract_related_searches()
                 
-                print(f"✅ Extraídos {len(page_results)} resultados de página {page + 1}")
+                logger.info(f"✅ Extraídos {len(page_results)} resultados de página {page + 1}")
             
             results['total_results'] = len(results['organic_results'])
             
             # Cache por 2 horas
             if results['total_results'] > 0:
                 self.cache.set(cache_key, results, 7200)
-                print(f"🎯 Total de resultados encontrados: {results['total_results']}")
+                logger.info(f"🎯 Total de resultados encontrados: {results['total_results']}")
             
             return results
             
         except Exception as e:
-            print(f"❌ Error scraping SERP: {str(e)}")
+            logger.info(f"❌ Error scraping SERP: {str(e)}")
             return results
         
         finally:
@@ -221,26 +226,26 @@ class MultilingualSerpScraper:
             for selector in selectors:
                 try:
                     elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                    print(f"🔍 Selector '{selector}': {len(elements)} elementos")
+                    logger.info(f"🔍 Selector '{selector}': {len(elements)} elementos")
                     
                     if len(elements) >= 3:  # Al menos 3 resultados válidos
                         result_elements = elements
                         successful_selector = selector
-                        print(f"✅ Usando selector: {selector}")
+                        logger.info(f"✅ Usando selector: {selector}")
                         break
                         
                 except Exception as e:
-                    print(f"❌ Error con selector '{selector}': {e}")
+                    logger.info(f"❌ Error con selector '{selector}': {e}")
                     continue
             
             if not result_elements:
-                print("⚠️ No se encontraron elementos con ningún selector")
+                logger.info("⚠️ No se encontraron elementos con ningún selector")
                 # ✅ FALLBACK - Buscar cualquier enlace que parezca resultado
                 try:
                     fallback_elements = self.driver.find_elements(By.CSS_SELECTOR, 'a[href^="http"]:has(h3)')
                     if fallback_elements:
                         result_elements = fallback_elements[:10]
-                        print(f"🔄 Usando fallback: {len(result_elements)} elementos")
+                        logger.info(f"🔄 Usando fallback: {len(result_elements)} elementos")
                 except:
                     pass
             
@@ -309,18 +314,18 @@ class MultilingualSerpScraper:
                             'domain': self.extract_domain(url)
                         })
                         position += 1
-                        print(f"✅ Resultado {position-1}: {title[:50]}...")
+                        logger.info(f"✅ Resultado {position-1}: {title[:50]}...")
                     
                 except Exception as e:
-                    print(f"⚠️ Error extrayendo resultado individual: {e}")
+                    logger.info(f"⚠️ Error extrayendo resultado individual: {e}")
                     continue
             
-            print(f"📊 Total extraído: {len(results)} resultados")
+            logger.info(f"📊 Total extraído: {len(results)} resultados")
             
         except Exception as e:
-            print(f"❌ Error extrayendo resultados orgánicos: {e}")
+            logger.info(f"❌ Error extrayendo resultados orgánicos: {e}")
             import traceback
-            traceback.print_exc()
+            traceback.logger.info_exc()
         
         return results
 
@@ -354,7 +359,7 @@ class MultilingualSerpScraper:
                     continue
                     
         except Exception as e:
-            print(f"Error extrayendo featured snippet: {e}")
+            logger.info(f"Error extrayendo featured snippet: {e}")
         
         return None
 
@@ -377,7 +382,7 @@ class MultilingualSerpScraper:
                     continue
                     
         except Exception as e:
-            print(f"Error extrayendo People Also Ask: {e}")
+            logger.info(f"Error extrayendo People Also Ask: {e}")
         
         return questions[:5]
 
@@ -400,7 +405,7 @@ class MultilingualSerpScraper:
                     continue
                     
         except Exception as e:
-            print(f"Error extrayendo búsquedas relacionadas: {e}")
+            logger.info(f"Error extrayendo búsquedas relacionadas: {e}")
         
         return related[:8]
 
@@ -411,7 +416,7 @@ class MultilingualSerpScraper:
                 self.driver.quit()
                 self.driver = None
                 self._requests_count = 0
-                print("🔄 Driver reiniciado")
+                logger.info("🔄 Driver reiniciado")
             except:
                 pass
 
@@ -441,7 +446,7 @@ class MultilingualSerpScraper:
                 'hl': country_config['hl']   # Parámetro de idioma corregido
             }
             
-            print(f"🔍 Obteniendo sugerencias para '{seed_keyword}' en {country}")
+            logger.info(f"🔍 Obteniendo sugerencias para '{seed_keyword}' en {country}")
             
             response = requests.get(url, params=params, timeout=10)
             
@@ -478,11 +483,11 @@ class MultilingualSerpScraper:
             
             # Cache por 24 horas
             self.cache.set(cache_key, result, 86400)
-            print(f"✅ Encontradas {len(clean_suggestions)} sugerencias")
+            logger.info(f"✅ Encontradas {len(clean_suggestions)} sugerencias")
             return result
             
         except Exception as e:
-            print(f"❌ Error getting keyword suggestions: {str(e)}")
+            logger.info(f"❌ Error getting keyword suggestions: {str(e)}")
             return {
                 'seed_keyword': seed_keyword,
                 'language': language,
@@ -527,7 +532,7 @@ class MultilingualSerpScraper:
                 time.sleep(0.5)  # Delay entre requests
                 
             except Exception as e:
-                print(f"Error obteniendo sugerencias para '{letter}': {e}")
+                logger.info(f"Error obteniendo sugerencias para '{letter}': {e}")
                 continue
         
         return suggestions
