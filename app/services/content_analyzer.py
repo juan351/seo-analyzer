@@ -1779,6 +1779,217 @@ class MultilingualContentAnalyzer:
                 variations.append(term[:-1] + 'ies')
         
         return list(set(variations))
+
+    # AGREGAR ESTOS MÉTODOS A TU CÓDIGO ORIGINAL (no reemplazar nada)
+
+    def analyze_competitors_with_terms(self, keywords, my_domain, my_content, top_n=5):
+        """
+        Versión mejorada de analyze_competitors que AGREGA análisis de términos
+        SIN romper la funcionalidad original
+        """
+        try:
+            # 1. Usar tu método original que funciona perfectamente
+            original_analysis = self.analyze_competitors(keywords, my_domain, top_n)
+            
+            if original_analysis.get('error'):
+                return original_analysis  # Devolver error si hay problema
+            
+            # 2. AGREGAR análisis de términos usando los competidores reales encontrados
+            language = self.language_detector.detect_language(my_content)
+            competitors_with_content = []
+            
+            # Usar los URLs reales que tu método original ya encontró
+            for keyword, competitors in original_analysis.get('competitors_by_keyword', {}).items():
+                for comp in competitors[:2]:  # Top 2 por keyword para no sobrecargar
+                    content = self.scrape_content(comp['url'])  # Tu método de scraping que funciona
+                    if content and len(content) > 300:
+                        competitors_with_content.append({
+                            'url': comp['url'],
+                            'content': content,
+                            'title': comp['title'],
+                            'domain': comp['domain']
+                        })
+                    
+                    if len(competitors_with_content) >= 5:  # Límite
+                        break
+            
+            # 3. Análisis de términos solo si tenemos contenido de competidores
+            if competitors_with_content:
+                term_analysis = self.analyze_terms_from_real_competitors(
+                    my_content, keywords, competitors_with_content, language
+                )
+                
+                # Agregar a la respuesta original
+                enhanced_analysis = original_analysis.copy()
+                enhanced_analysis['term_frequency_analysis'] = term_analysis
+                return enhanced_analysis
+            
+            else:
+                # Si no hay contenido, devolver análisis original sin términos
+                return original_analysis
+                
+        except Exception as e:
+            logger.info(f"Error en análisis con términos: {e}")
+            # En caso de error, devolver análisis original
+            return self.analyze_competitors(keywords, my_domain, top_n)
+
+    def analyze_terms_from_real_competitors(self, my_content, keywords, competitors_content, language):
+        """Análisis simple de términos usando competidores reales"""
+        
+        # Contar términos en mi contenido
+        my_term_counts = {}
+        for keyword in keywords:
+            my_term_counts[keyword] = my_content.lower().count(keyword.lower())
+        
+        # Contar términos en competidores
+        competitor_term_counts = {kw: [] for kw in keywords}
+        competitor_word_counts = []
+        
+        for comp in competitors_content:
+            content = comp['content']
+            competitor_word_counts.append(len(content.split()))
+            
+            for keyword in keywords:
+                count = content.lower().count(keyword.lower())
+                competitor_term_counts[keyword].append(count)
+        
+        # Calcular promedios
+        avg_competitor_words = sum(competitor_word_counts) / len(competitor_word_counts) if competitor_word_counts else 1000
+        
+        # Generar recomendaciones
+        keyword_recommendations = []
+        for keyword in keywords:
+            counts = competitor_term_counts[keyword]
+            avg_count = sum(counts) / len(counts) if counts else 2
+            my_count = my_term_counts[keyword]
+            
+            keyword_recommendations.append({
+                'term': keyword,
+                'current_count': my_count,
+                'competitor_average': round(avg_count, 1),
+                'recommended_count': max(2, int(avg_count)),
+                'priority': 'high' if my_count < avg_count * 0.5 else 'medium'
+            })
+        
+        return {
+            'keywords': keyword_recommendations,
+            'content_analysis': {
+                'my_word_count': len(my_content.split()),
+                'competitor_avg_words': int(avg_competitor_words),
+                'competitors_analyzed': len(competitors_content)
+            }
+        }
+
+    def analyze_real_competitors_terms(self, my_content, keywords, competitors_content, language):
+        """Análisis de términos usando contenido REAL de competidores"""
+        
+        all_terms = defaultdict(list)
+        all_ngrams = defaultdict(list)
+        word_counts = []
+        
+        # Analizar cada competidor real
+        for competitor in competitors_content:
+            content = competitor['content']
+            word_count = competitor['word_count']
+            word_counts.append(word_count)
+            
+            # Contar keywords objetivo
+            for keyword in keywords:
+                count = self.count_term_in_content(content, keyword, language)
+                all_terms[keyword].append(count)
+            
+            # Extraer términos semánticos
+            semantic_terms = self.extract_semantic_terms(content, language, keywords)
+            for term, count in semantic_terms.items():
+                all_terms[term].append(count)
+            
+            # N-gramas importantes
+            ngrams = self.extract_important_ngrams(content, language, keywords)
+            for ngram, count in ngrams.items():
+                all_ngrams[ngram].append(count)
+        
+        # Calcular estadísticas
+        avg_word_count = sum(word_counts) / len(word_counts) if word_counts else 1000
+        
+        # Procesar términos
+        term_stats = {}
+        for term, counts in all_terms.items():
+            if counts:
+                avg_count = sum(counts) / len(counts)
+                term_stats[term] = {
+                    'avg_count': avg_count,
+                    'max_count': max(counts),
+                    'competitors_using': len([c for c in counts if c > 0]),
+                    'recommended_optimal': max(2, int(avg_count))
+                }
+        
+        # Generar recomendaciones
+        recommendations = []
+        for keyword in keywords:
+            current_count = self.count_term_in_content(my_content, keyword, language)
+            if keyword in term_stats:
+                stats = term_stats[keyword]
+                recommendations.append({
+                    'term': keyword,
+                    'current_count': current_count,
+                    'recommended_count': stats['recommended_optimal'],
+                    'competitor_average': stats['avg_count'],
+                    'priority': 'high' if current_count < stats['avg_count'] * 0.5 else 'medium'
+                })
+        
+        return {
+            'keywords': recommendations,
+            'content_analysis': {
+                'my_word_count': len(my_content.split()),
+                'competitor_avg_words': int(avg_word_count),
+                'competitors_analyzed': len(competitors_content)
+            },
+            'semantic_terms': [
+                {
+                    'term': term, 
+                    'competitor_average': stats['avg_count'],
+                    'current_count': self.count_term_in_content(my_content, term, language)
+                }
+                for term, stats in term_stats.items() 
+                if term not in keywords and stats['competitors_using'] >= 2
+            ][:8]
+        }
+
+    # Métodos auxiliares (agregar también)
+    def count_term_in_content(self, content, term, language):
+        """Contar ocurrencias de un término"""
+        content_clean = re.sub(r'[^\w\s]', ' ', content.lower())
+        return content_clean.count(term.lower())
+
+    def extract_semantic_terms(self, content, language, target_keywords, max_terms=10):
+        """Extraer términos relacionados"""
+        clean_content = re.sub(r'[^\w\s]', ' ', content.lower())
+        words = clean_content.split()
+        
+        stop_words = self.get_stop_words(language)
+        significant_words = [
+            word for word in words 
+            if len(word) > 3 and word not in stop_words
+            and not any(keyword.lower() in word.lower() for keyword in target_keywords)
+        ]
+        
+        word_freq = Counter(significant_words)
+        return {word: count for word, count in word_freq.most_common(max_terms) if count >= 2}
+
+    def extract_important_ngrams(self, content, language, target_keywords):
+        """Extraer frases importantes"""
+        clean_content = re.sub(r'[^\w\s]', ' ', content.lower())
+        words = clean_content.split()
+        ngrams = defaultdict(int)
+        stop_words = self.get_stop_words(language)
+        
+        for i in range(len(words) - 1):
+            if len(words[i]) > 3 and len(words[i+1]) > 3:
+                if words[i] not in stop_words and words[i+1] not in stop_words:
+                    ngram = f"{words[i]} {words[i+1]}"
+                    ngrams[ngram] += 1
+        
+        return {ngram: count for ngram, count in ngrams.items() if count >= 2}
     
     def clean_content_for_analysis(self, content):
         """Limpiar contenido para análisis de términos"""

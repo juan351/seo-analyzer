@@ -255,130 +255,49 @@ def keyword_suggestions():
 @limiter.limit("3 per minute")
 @require_api_key
 def analyze_competitors():
-    """Análisis de competidores basado en keywords con análisis de términos opcional"""
+    """Análisis de competidores basado en keywords - RESTAURADO + análisis opcional de términos"""
     try:
         data = request.get_json()
         
-        if not validate_request(data, ['keywords']):
-            return jsonify({'error': 'Missing required field: keywords'}), 400
+        if not validate_request(data, ['keywords', 'my_domain']):
+            return jsonify({'error': 'Missing required fields'}), 400
         
         keywords = data['keywords']
-        my_domain = data.get('my_domain', '')
-        content = data.get('content', '')  # NUEVO: contenido opcional
-        title = data.get('title', '')      # NUEVO: título opcional
+        my_domain = data['my_domain']
         top_n = min(data.get('top_competitors', 5), 10)
-        language = data.get('language')
+        
+        # Campos opcionales para nueva funcionalidad
+        content = data.get('content', '')
         
         logger.info(f"Analyzing competitors for keywords: {keywords}")
         
-        # Análisis básico de competidores (tu funcionalidad existente)
-        competitor_analysis = content_analyzer.analyze_competitors(keywords, my_domain, top_n)
+        # TU ANÁLISIS ORIGINAL QUE FUNCIONA (sin cambiar nada)
+        analysis = content_analyzer.analyze_competitors(keywords, my_domain, top_n)
         
-        # NUEVO: Si se proporciona contenido, hacer análisis de términos
-        term_analysis = None
-        if content:
-            logger.info("Content provided, performing term frequency analysis")
-            term_analysis = content_analyzer.analyze_term_frequency_competitors(
-                content=content,
-                target_keywords=keywords,
-                language=language
-            )
-        
-        # Formatear respuesta
-        response_data = {
-            'competitors': competitor_analysis.get('unique_competitors', []),
-            'total_competitors': competitor_analysis.get('total_competitors_found', 0),
-            'average_word_count': 1200,  # Valor por defecto
-            'your_word_count': len(content.split()) if content else 0,
-            
-            'keyword_analysis': {
-                'your_density': 0.14,  # Se puede calcular si hay contenido
-                'average_density': 1.5,
-                'recommended_density': {'min': 0.5, 'max': 2.5}
-            },
-            
-            'content_structure': {
-                'your_headings': content.count('#') + content.count('<h') if content else 0,
-                'average_headings': 4,
-                'your_paragraphs': content.count('\n\n') + content.count('<p>') if content else 0,
-                'average_paragraphs': 10
-            },
-            
-            'suggestions': [],
-            
-            'missing_keywords': [],
-            'top_keywords': [],
-            
-            'analysis_summary': {
-                'analyzed_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                'api_used': True,
-                'cache_duration': 3600,
-                'api_summary': {
-                    'avg_competitors_per_keyword': competitor_analysis.get('total_competitors_found', 0) / max(len(keywords), 1),
-                    'most_common_competitors': competitor_analysis.get('analysis_summary', {}).get('most_common_competitors', [])
-                }
-            }
-        }
-        
-        # NUEVO: Agregar análisis de términos si está disponible
-        if term_analysis:
-            response_data['term_frequency_analysis'] = term_analysis['term_frequency_analysis']
-            
-            # Generar sugerencias basadas en términos
-            term_suggestions = []
-            for term_data in term_analysis['term_frequency_analysis']['keywords']:
-                current = term_data['current_count']
-                optimal = term_data['recommended_count']['optimal']
-                min_count = term_data['recommended_count']['min']
+        # NUEVO: Si se proporciona contenido, agregar análisis de términos
+        if content and len(content) > 100:
+            logger.info("Adding term frequency analysis")
+            try:
+                # Usar los competidores reales que ya encontraste
+                term_analysis = content_analyzer.analyze_competitors_with_terms(
+                    keywords, my_domain, content, top_n
+                )
                 
-                if current < min_count:
-                    term_suggestions.append({
-                        'title': f'Optimizar "{term_data["term"]}"',
-                        'message': f'Usar "{term_data["term"]}" {optimal - current} veces más. Actual: {current}, Recomendado: {optimal}',
-                        'priority': 'high',
-                        'icon': '🎯',
-                        'action': 'optimize_keywords',
-                        'term': term_data['term'],
-                        'current_count': current,
-                        'target_count': optimal
-                    })
-                elif current > term_data['recommended_count']['max']:
-                    term_suggestions.append({
-                        'title': f'Reducir "{term_data["term"]}"',
-                        'message': f'"{term_data["term"]}" aparece demasiado ({current} veces). Reducir a ~{optimal}',
-                        'priority': 'medium',
-                        'icon': '⚠️',
-                        'action': 'reduce_keywords',
-                        'term': term_data['term'],
-                        'current_count': current,
-                        'target_count': optimal
-                    })
-            
-            # Agregar sugerencias de términos semánticos
-            for term_data in term_analysis['term_frequency_analysis']['semantic_terms'][:3]:
-                if term_data['current_count'] == 0 and term_data['priority'] == 'high':
-                    term_suggestions.append({
-                        'title': f'Incluir "{term_data["term"]}"',
-                        'message': f'Agregar término relacionado "{term_data["term"]}" usado por competidores.',
-                        'priority': 'medium',
-                        'icon': '💡',
-                        'action': 'add_semantic_term',
-                        'term': term_data['term'],
-                        'current_count': 0,
-                        'target_count': term_data['recommended_count']['optimal']
-                    })
-            
-            response_data['suggestions'] = term_suggestions
-            
-            # Actualizar métricas con datos reales
-            if term_analysis['term_frequency_analysis']['content_analysis']['competitor_avg_words'] > 0:
-                response_data['average_word_count'] = int(term_analysis['term_frequency_analysis']['content_analysis']['competitor_avg_words'])
+                # Agregar solo si fue exitoso
+                if term_analysis and 'term_frequency_analysis' in term_analysis:
+                    analysis['term_frequency_analysis'] = term_analysis['term_frequency_analysis']
+                    logger.info("Term frequency analysis added successfully")
+                
+            except Exception as e:
+                logger.info(f"Term analysis failed (non-critical): {e}")
+                # Continuar sin análisis de términos
         
-        logger.info(f"Competitor analysis complete with {len(response_data.get('suggestions', []))} suggestions")
+        logger.info(f"Competitor analysis complete: {analysis}")
         
+        # RESPUESTA ORIGINAL (sin cambiar formato)
         return jsonify({
             'success': True,
-            'data': response_data,
+            'data': analysis,  # Tu estructura original
             'timestamp': datetime.now().isoformat()
         })
         
