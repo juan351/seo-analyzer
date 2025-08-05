@@ -3,10 +3,11 @@ from textstat import flesch_reading_ease
 import requests
 from bs4 import BeautifulSoup
 import re
-from collections import Counter
+from collections import Counter, defaultdict
 from urllib.parse import urlparse, urljoin
 import time
 import logging
+import math
 
 # Logging
 logging.basicConfig(level=logging.INFO)
@@ -795,3 +796,1141 @@ class MultilingualContentAnalyzer:
             score += 10  # Bonus por tener datos competitivos
         
         return min(round(score), 100)
+
+# NUEVOS MÉTODOS PARA ANÁLISIS DE FRECUENCIA TIPO SURFER
+
+    def analyze_term_frequency_competitors(self, content, target_keywords, language=None):
+        """
+        Análisis completo de frecuencia de términos comparando con competidores
+        Similar a Surfer SEO
+        """
+        if not language:
+            language = self.language_detector.detect_language(content)
+        
+        cache_key = f"term_frequency:{language}:{hash(content)}:{hash(str(target_keywords))}"
+        cached_result = self.cache.get(cache_key)
+        
+        if cached_result:
+            logger.info("📋 Usando análisis de términos cached")
+            return cached_result
+        
+        logger.info("🎯 Iniciando análisis de frecuencia de términos...")
+        
+        # 1. Obtener contenido de competidores
+        competitors_content = self.get_competitors_content_for_terms(target_keywords, language)
+        
+        if not competitors_content:
+            logger.info("⚠️ No se pudieron obtener competidores, usando análisis básico")
+            return self.basic_term_frequency_analysis(content, target_keywords, language)
+        
+        # 2. Analizar frecuencia en competidores
+        competitor_term_analysis = self.analyze_competitors_term_frequency(
+            competitors_content, target_keywords, language
+        )
+        
+        # 3. Analizar contenido actual
+        my_term_analysis = self.analyze_content_terms(content, language)
+        
+        # 4. Generar recomendaciones basadas en competidores
+        term_recommendations = self.generate_term_recommendations(
+            my_term_analysis, competitor_term_analysis, target_keywords, content
+        )
+        
+        result = {
+            'term_frequency_analysis': {
+                'keywords': term_recommendations['keywords'],
+                'ngrams': term_recommendations['ngrams'],
+                'semantic_terms': term_recommendations['semantic_terms'],
+                'content_analysis': {
+                    'my_word_count': len(content.split()),
+                    'competitor_avg_words': competitor_term_analysis['avg_word_count'],
+                    'my_total_terms': sum(term['current_count'] for term in term_recommendations['keywords']),
+                    'competitor_avg_terms': competitor_term_analysis['avg_total_terms']
+                }
+            },
+            'competitors_analyzed': len(competitors_content),
+            'analysis_timestamp': time.time()
+        }
+        
+        # Cache por 2 horas
+        self.cache.set(cache_key, result, 7200)
+        return result
+
+    def get_competitors_content_for_terms(self, keywords, language, max_competitors=5):
+        """Obtener contenido de competidores para análisis de términos"""
+        try:
+            from ..services.serp_scraper import MultilingualSerpScraper
+            
+            serp_scraper = MultilingualSerpScraper(self.cache)
+            all_competitor_contents = []
+            
+            # Usar la keyword principal (primera) para encontrar competidores
+            main_keyword = keywords[0] if keywords else "contenido"
+            
+            logger.info(f"🔍 Buscando competidores para análisis de términos: {main_keyword}")
+            
+            serp_results = serp_scraper.get_serp_results(
+                main_keyword,
+                location='US' if language == 'en' else 'ES',
+                language=language,
+                pages=1
+            )
+            
+            if not serp_results or 'organic_results' not in serp_results:
+                return []
+            
+            # Obtener top resultados
+            top_results = serp_results['organic_results'][:max_competitors * 2]
+            
+            for result in top_results:
+                url = result.get('link', '')
+                if not url:
+                    continue
+                
+                logger.info(f"📄 Scrapeando para análisis de términos: {url}")
+                content = self.scrape_content(url)
+                
+                if content and len(content) > 500:  # Mínimo de contenido
+                    all_competitor_contents.append({
+                        'url': url,
+                        'content': content,
+                        'word_count': len(content.split()),
+                        'title': result.get('title', '')
+                    })
+                    
+                    if len(all_competitor_contents) >= max_competitors:
+                        break
+                
+                time.sleep(1)  # Delay entre requests
+            
+            logger.info(f"✅ Obtenidos {len(all_competitor_contents)} competidores para análisis")
+            return all_competitor_contents
+            
+        except Exception as e:
+            logger.info(f"Error obteniendo competidores para términos: {e}")
+            return []
+
+    def analyze_competitors_term_frequency(self, competitors_content, target_keywords, language):
+        """Analizar frecuencia de términos en contenido de competidores"""
+        
+        # Extraer todos los términos importantes de competidores
+        all_terms = defaultdict(list)  # term -> [count1, count2, count3...]
+        all_ngrams = defaultdict(list)  # ngram -> [count1, count2, count3...]
+        word_counts = []
+        total_terms_per_competitor = []
+        
+        for competitor in competitors_content:
+            content = competitor['content']
+            word_count = competitor['word_count']
+            word_counts.append(word_count)
+            
+            # Analizar términos individuales
+            terms_analysis = self.analyze_content_terms(content, language)
+            
+            # Contar términos objetivo
+            target_term_count = 0
+            for keyword in target_keywords:
+                count = self.count_term_in_content(content, keyword, language)
+                all_terms[keyword].append(count)
+                target_term_count += count
+            
+            # Extraer términos semánticos importantes (palabras que aparecen frecuentemente)
+            semantic_terms = self.extract_semantic_terms(content, language, target_keywords)
+            for term, count in semantic_terms.items():
+                all_terms[term].append(count)
+                target_term_count += count
+            
+            # Analizar n-gramas (frases de 2-3 palabras)
+            ngrams = self.extract_important_ngrams(content, language, target_keywords)
+            for ngram, count in ngrams.items():
+                all_ngrams[ngram].append(count)
+            
+            total_terms_per_competitor.append(target_term_count)
+        
+        # Calcular promedios y estadísticas
+        avg_word_count = sum(word_counts) / len(word_counts) if word_counts else 1000
+        avg_total_terms = sum(total_terms_per_competitor) / len(total_terms_per_competitor) if total_terms_per_competitor else 0
+        
+        # Procesar estadísticas por término
+        term_stats = {}
+        for term, counts in all_terms.items():
+            if counts:  # Solo si hay datos
+                avg_count = sum(counts) / len(counts)
+                max_count = max(counts)
+                min_count = min(counts)
+                
+                term_stats[term] = {
+                    'avg_count': avg_count,
+                    'max_count': max_count,
+                    'min_count': min_count,
+                    'competitors_using': len([c for c in counts if c > 0]),
+                    'recommended_min': max(1, int(avg_count * 0.7)),
+                    'recommended_optimal': max(2, int(avg_count)),
+                    'recommended_max': max(3, int(avg_count * 1.3))
+                }
+        
+        # Procesar n-gramas
+        ngram_stats = {}
+        for ngram, counts in all_ngrams.items():
+            if counts and len([c for c in counts if c > 0]) >= 2:  # Al menos 2 competidores lo usan
+                avg_count = sum(counts) / len(counts)
+                ngram_stats[ngram] = {
+                    'avg_count': avg_count,
+                    'competitors_using': len([c for c in counts if c > 0]),
+                    'recommended_min': max(1, int(avg_count * 0.5)),
+                    'recommended_optimal': max(1, int(avg_count)),
+                    'recommended_max': max(2, int(avg_count * 1.2))
+                }
+        
+        return {
+            'term_stats': term_stats,
+            'ngram_stats': ngram_stats,
+            'avg_word_count': avg_word_count,
+            'avg_total_terms': avg_total_terms,
+            'competitors_analyzed': len(competitors_content)
+        }
+
+    def analyze_content_terms(self, content, language):
+        """Analizar términos en el contenido actual"""
+        clean_content = self.clean_content_for_analysis(content)
+        words = clean_content.split()
+        
+        return {
+            'word_count': len(words),
+            'unique_words': len(set(words)),
+            'content_cleaned': clean_content
+        }
+
+    def extract_semantic_terms(self, content, language, target_keywords, max_terms=10):
+        """Extraer términos semánticamente relacionados"""
+        clean_content = self.clean_content_for_analysis(content)
+        words = clean_content.split()
+        
+        # Filtrar stop words
+        stop_words = self.get_stop_words(language)
+        
+        # Contar palabras significativas
+        significant_words = [
+            word for word in words 
+            if len(word) > 3 and word not in stop_words
+            and not any(keyword.lower() in word.lower() for keyword in target_keywords)
+        ]
+        
+        word_freq = Counter(significant_words)
+        
+        # Filtrar palabras que aparecen al menos 2 veces
+        semantic_terms = {
+            word: count for word, count in word_freq.most_common(max_terms)
+            if count >= 2
+        }
+        
+        return semantic_terms
+
+    def extract_important_ngrams(self, content, language, target_keywords, n_values=[2, 3]):
+        """Extraer n-gramas importantes (frases de 2-3 palabras)"""
+        clean_content = self.clean_content_for_analysis(content)
+        words = clean_content.split()
+        
+        ngrams = defaultdict(int)
+        stop_words = self.get_stop_words(language)
+        
+        for n in n_values:
+            for i in range(len(words) - n + 1):
+                ngram_words = words[i:i+n]
+                
+                # Filtrar n-gramas que contengan stop words o sean muy cortos
+                if any(len(word) < 3 for word in ngram_words):
+                    continue
+                if any(word in stop_words for word in ngram_words):
+                    continue
+                
+                ngram = ' '.join(ngram_words)
+                
+                # Solo n-gramas que aparezcan al menos 2 veces
+                ngrams[ngram] += 1
+        
+        # Filtrar y devolver solo los más frecuentes
+        important_ngrams = {
+            ngram: count for ngram, count in ngrams.items()
+            if count >= 2
+        }
+        
+        return dict(Counter(important_ngrams).most_common(8))
+
+    def count_term_in_content(self, content, term, language):
+        """Contar ocurrencias de un término específico"""
+        clean_content = self.clean_content_for_analysis(content)
+        term_clean = self.clean_content_for_analysis(term)
+        
+        # Contar ocurrencias exactas
+        exact_count = clean_content.lower().count(term_clean.lower())
+        
+        # Contar variaciones (plural/singular)
+        variations = self.get_term_variations(term_clean, language)
+        total_count = exact_count
+        
+        for variation in variations:
+            if variation.lower() != term_clean.lower():
+                total_count += clean_content.lower().count(variation.lower())
+        
+        return total_count
+
+    def get_term_variations(self, term, language):
+        """Obtener variaciones de un término (plural, singular, etc.)"""
+        variations = [term]
+        
+        if language == 'es':
+            # Variaciones en español
+            if term.endswith('s'):
+                variations.append(term[:-1])  # Plural a singular
+            else:
+                variations.append(term + 's')  # Singular a plural
+            
+            # Variaciones de género básicas
+            if term.endswith('o'):
+                variations.append(term[:-1] + 'a')
+            elif term.endswith('a'):
+                variations.append(term[:-1] + 'o')
+                
+        elif language == 'en':
+            # Variaciones en inglés
+            if term.endswith('s'):
+                variations.append(term[:-1])
+            else:
+                variations.append(term + 's')
+            
+            if term.endswith('y'):
+                variations.append(term[:-1] + 'ies')
+        
+        return list(set(variations))
+
+    def clean_content_for_analysis(self, content):
+        """Limpiar contenido para análisis de términos"""
+        # Remover HTML
+        content = re.sub(r'<[^>]+>', ' ', content)
+        
+        # Normalizar espacios
+        content = re.sub(r'\s+', ' ', content)
+        
+        # Mantener solo letras, números y espacios (incluyendo acentos)
+        content = re.sub(r'[^\w\s]', ' ', content, flags=re.UNICODE)
+        
+        return content.strip()
+
+    def generate_term_recommendations(self, my_analysis, competitor_analysis, target_keywords, my_content):
+        """Generar recomendaciones específicas para cada término"""
+        
+        recommendations = {
+            'keywords': [],
+            'ngrams': [],
+            'semantic_terms': []
+        }
+        
+        my_word_count = my_analysis['word_count']
+        
+        # 1. Analizar keywords principales
+        for keyword in target_keywords:
+            current_count = self.count_term_in_content(my_content, keyword, 'es')  # Asumiendo español
+            
+            if keyword in competitor_analysis['term_stats']:
+                stats = competitor_analysis['term_stats'][keyword]
+                
+                recommendations['keywords'].append({
+                    'term': keyword,
+                    'type': 'primary_keyword',
+                    'current_count': current_count,
+                    'recommended_count': {
+                        'min': stats['recommended_min'],
+                        'optimal': stats['recommended_optimal'],
+                        'max': stats['recommended_max']
+                    },
+                    'competitor_average': stats['avg_count'],
+                    'priority': self.calculate_term_priority(current_count, stats),
+                    'competitors_using': stats['competitors_using']
+                })
+        
+        # 2. Términos semánticos importantes
+        semantic_limit = 8
+        semantic_count = 0
+        
+        for term, stats in competitor_analysis['term_stats'].items():
+            if term not in target_keywords and semantic_count < semantic_limit:
+                current_count = self.count_term_in_content(my_content, term, 'es')
+                
+                # Solo incluir si es significativo
+                if stats['competitors_using'] >= 2 and stats['avg_count'] >= 2:
+                    recommendations['semantic_terms'].append({
+                        'term': term,
+                        'type': 'semantic',
+                        'current_count': current_count,
+                        'recommended_count': {
+                            'min': stats['recommended_min'],
+                            'optimal': stats['recommended_optimal'],
+                            'max': stats['recommended_max']
+                        },
+                        'competitor_average': stats['avg_count'],
+                        'priority': self.calculate_term_priority(current_count, stats),
+                        'competitors_using': stats['competitors_using']
+                    })
+                    semantic_count += 1
+
+        # 3. N-gramas importantes
+        for ngram, stats in competitor_analysis['ngram_stats'].items():
+            current_count = self.count_term_in_content(my_content, ngram, 'es')
+            
+            recommendations['ngrams'].append({
+                'term': ngram,
+                'type': 'ngram',
+                'current_count': current_count,
+                'recommended_count': {
+                    'min': stats['recommended_min'],
+                    'optimal': stats['recommended_optimal'],
+                    'max': stats['recommended_max']
+                },
+                'competitor_average': stats['avg_count'],
+                'priority': self.calculate_term_priority(current_count, stats),
+                'competitors_using': stats['competitors_using']
+            })
+        
+        return recommendations
+
+    def calculate_term_priority(self, current_count, competitor_stats):
+        """Calcular prioridad de optimización para un término"""
+        optimal_count = competitor_stats['recommended_optimal']
+        gap = optimal_count - current_count
+        
+        if gap > optimal_count * 0.7:  # Falta más del 70%
+            return 'high'
+        elif gap > optimal_count * 0.3:  # Falta más del 30%
+            return 'medium'
+        else:
+            return 'low'
+
+    def basic_term_frequency_analysis(self, content, target_keywords, language):
+        """Análisis básico cuando no hay datos de competidores"""
+        logger.info("📊 Realizando análisis básico de términos")
+        
+        my_word_count = len(content.split())
+        recommendations = {
+            'keywords': [],
+            'ngrams': [],
+            'semantic_terms': []
+        }
+        
+        # Análisis básico para keywords principales
+        for keyword in target_keywords:
+            current_count = self.count_term_in_content(content, keyword, language)
+            
+            # Estimaciones básicas basadas en longitud del contenido
+            if my_word_count < 500:
+                optimal = 3
+            elif my_word_count < 1000:
+                optimal = 5
+            else:
+                optimal = max(7, int(my_word_count / 200))
+            
+            recommendations['keywords'].append({
+                'term': keyword,
+                'type': 'primary_keyword',
+                'current_count': current_count,
+                'recommended_count': {
+                    'min': max(1, int(optimal * 0.6)),
+                    'optimal': optimal,
+                    'max': int(optimal * 1.4)
+                },
+                'competitor_average': optimal,  # Estimación
+                'priority': 'high' if current_count < optimal * 0.5 else 'medium',
+                'competitors_using': 0  # No hay datos
+            })
+        
+        return {
+            'term_frequency_analysis': {
+                'keywords': recommendations['keywords'],
+                'ngrams': recommendations['ngrams'],
+                'semantic_terms': recommendations['semantic_terms'],
+                'content_analysis': {
+                    'my_word_count': my_word_count,
+                    'competitor_avg_words': 0,
+                    'my_total_terms': sum(term['current_count'] for term in recommendations['keywords']),
+                    'competitor_avg_terms': 0
+                }
+            },
+            'competitors_analyzed': 0,
+            'analysis_timestamp': time.time()
+        }
+
+    # MÉTODO MODIFICADO PARA INTEGRAR EL ANÁLISIS DE TÉRMINOS
+
+    def comprehensive_analysis(self, content, target_keywords=None, competitor_contents=None, language=None):
+        """Análisis completo con integración de frecuencia de términos"""
+        
+        # Tu código existente hasta el análisis competitivo...
+        if not language:
+            language = self.language_detector.detect_language(content)
+        
+        if not target_keywords:
+            target_keywords = self.extract_keywords_from_content(content, language)
+        
+        logger.info(f"🔍 Keywords extraídas: {target_keywords}")
+        
+        cache_key = f"comprehensive_analysis:{language}:{hash(content)}:{hash(str(target_keywords))}"
+        cached_result = self.cache.get(cache_key)
+        
+        if cached_result:
+            logger.info("📋 Usando resultado cached")
+            return cached_result
+        
+        # Análisis básico del contenido
+        analysis = {
+            'detected_language': language,
+            'language_name': self.language_detector.get_language_config(language)['name'],
+            'extracted_keywords': target_keywords,
+            'basic_metrics': self.get_basic_metrics(content),
+            'readability': self.analyze_readability(content, language),
+            'keyword_analysis': self.analyze_keywords(content, target_keywords, language),
+            'content_score': 0,
+            'optimization_suggestions': [],
+            'competitive_analysis': None
+        }
+        
+        # NUEVO: Análisis de frecuencia de términos
+        logger.info("🎯 Iniciando análisis de frecuencia de términos...")
+        term_frequency_data = self.analyze_term_frequency_competitors(content, target_keywords, language)
+        analysis['term_frequency_analysis'] = term_frequency_data['term_frequency_analysis']
+        
+        # Análisis semántico (tu código existente)
+        if SPACY_AVAILABLE and language in self.nlp_models:
+            analysis['semantic_analysis'] = self.semantic_analysis(content, language)
+        else:
+            analysis['semantic_analysis'] = self.basic_semantic_analysis(content, language)
+        
+        # Análisis competitivo automático (tu código existente)
+        logger.info("🏆 Iniciando análisis competitivo automático...")
+        competitive_data = self.auto_competitive_analysis(target_keywords, content, language)
+        
+        if competitive_data and competitive_data.get('competitors_analyzed', 0) > 0:
+            analysis['competitive_analysis'] = competitive_data
+            
+            competitive_suggestions = self.generate_competitive_suggestions(
+                competitive_data, analysis, target_keywords
+            )
+            analysis['optimization_suggestions'].extend(competitive_suggestions)
+            logger.info(f"💡 Generadas {len(competitive_suggestions)} sugerencias competitivas")
+        else:
+            logger.info("⚠️ No se pudieron obtener datos competitivos")
+        
+        # NUEVO: Generar sugerencias de términos
+        term_suggestions = self.generate_term_frequency_suggestions(analysis['term_frequency_analysis'])
+        analysis['optimization_suggestions'].extend(term_suggestions)
+        
+        # Generar sugerencias básicas (tu código existente)
+        basic_suggestions = self.generate_suggestions(analysis, language)
+        analysis['optimization_suggestions'].extend(basic_suggestions)
+        
+        analysis['content_score'] = self.calculate_content_score(analysis)
+        
+        # Cache por 2 horas
+        self.cache.set(cache_key, analysis, 7200)
+        return analysis
+
+    def generate_term_frequency_suggestions(self, term_analysis):
+        """Generar sugerencias específicas basadas en análisis de términos"""
+        suggestions = []
+        
+        # Sugerencias para keywords principales
+        for term_data in term_analysis.get('keywords', []):
+            current = term_data['current_count']
+            optimal = term_data['recommended_count']['optimal']
+            min_count = term_data['recommended_count']['min']
+            
+            if current < min_count:
+                suggestions.append({
+                    'type': 'term_frequency',
+                    'priority': 'high',
+                    'category': 'Optimización de Términos',
+                    'term': term_data['term'],
+                    'message': f'Aumentar uso de "{term_data["term"]}". Actual: {current}, Recomendado: {optimal}',
+                    'current_value': f'{current} veces',
+                    'target_value': f'{optimal} veces',
+                    'improvement': f'Añadir "{term_data["term"]}" {optimal - current} veces más',
+                    'term_type': 'keyword'
+                })
+            elif current > term_data['recommended_count']['max']:
+                suggestions.append({
+                    'type': 'term_frequency',
+                    'priority': 'medium',
+                    'category': 'Optimización de Términos',
+                    'term': term_data['term'],
+                    'message': f'Reducir uso de "{term_data["term"]}". Puede parecer spam.',
+                    'current_value': f'{current} veces',
+                    'target_value': f'{optimal} veces',
+                    'improvement': f'Reducir "{term_data["term"]}" a ~{optimal} veces',
+                    'term_type': 'keyword'
+                })
+        
+        # Sugerencias para términos semánticos importantes
+        important_semantic = [
+            term for term in term_analysis.get('semantic_terms', [])
+            if term['priority'] == 'high' and term['current_count'] == 0
+        ][:3]  # Top 3 términos semánticos faltantes
+        
+        for term_data in important_semantic:
+            suggestions.append({
+                'type': 'semantic_terms',
+                'priority': 'medium',
+                'category': 'Contenido Semántico',
+                'term': term_data['term'],
+                'message': f'Incluir término relacionado "{term_data["term"]}" usado por {term_data["competitors_using"]} competidores.',
+                'current_value': 'No incluido',
+                'target_value': f'{term_data["recommended_count"]["optimal"]} veces',
+                'improvement': f'Añadir "{term_data["term"]}" para enriquecer el contenido',
+                'term_type': 'semantic'
+            })
+        
+        # Sugerencias para n-gramas importantes
+        important_ngrams = [
+            term for term in term_analysis.get('ngrams', [])
+            if term['priority'] == 'high' and term['current_count'] < term['recommended_count']['min']
+        ][:2]  # Top 2 n-gramas importantes
+        
+        for term_data in important_ngrams:
+            suggestions.append({
+                'type': 'ngram_optimization',
+                'priority': 'medium',
+                'category': 'Frases Clave',
+                'term': term_data['term'],
+                'message': f'Incluir frase "{term_data["term"]}" usada por competidores.',
+                'current_value': f'{term_data["current_count"]} veces',
+                'target_value': f'{term_data["recommended_count"]["optimal"]} veces',
+                'improvement': f'Usar frase "{term_data["term"]}" {term_data["recommended_count"]["optimal"] - term_data["current_count"]} veces más',
+                'term_type': 'ngram'
+            })
+        
+        return suggestions
+
+    # MÉTODO PARA ENDPOINT ESPECÍFICO DE ANÁLISIS DE COMPETIDORES
+    def analyze_competitors_endpoint(self, content, title, target_keywords=None, language=None):
+        """
+        Método específico para el endpoint competitors/analyze
+        Devuelve formato compatible con tu JSON actual + análisis de términos
+        """
+        if not language:
+            language = self.language_detector.detect_language(content)
+        
+        if not target_keywords:
+            target_keywords = self.extract_keywords_from_content(content, language)
+        
+        logger.info(f"🎯 Análisis de competidores para endpoint - Keywords: {target_keywords}")
+        
+        # Obtener análisis completo
+        full_analysis = self.comprehensive_analysis(content, target_keywords, language=language)
+        
+        # Formatear respuesta para mantener compatibilidad con tu estructura actual
+        # pero añadiendo el análisis de términos
+        
+        competitors_data = []
+        if full_analysis.get('competitive_analysis'):
+            # Convertir datos competitivos a formato esperado
+            # (aquí adaptarías según tu estructura actual)
+            pass
+        
+        # Estructura de respuesta que mantiene tu formato actual
+        response = {
+            'success': True,
+            'data': {
+                'competitors': competitors_data,  # Tu estructura actual
+                'total_competitors': len(competitors_data),
+                'average_word_count': full_analysis['term_frequency_analysis']['content_analysis'].get('competitor_avg_words', 1200),
+                'your_word_count': full_analysis['basic_metrics']['word_count'],
+                
+                # NUEVO: Análisis de frecuencia de términos
+                'term_frequency_analysis': full_analysis['term_frequency_analysis'],
+                
+                # Tu estructura actual de keyword_analysis
+                'keyword_analysis': {
+                    'your_density': sum(kw_data['density'] for kw_data in full_analysis['keyword_analysis'].values()) / len(full_analysis['keyword_analysis']) if full_analysis['keyword_analysis'] else 0,
+                    'average_density': 1.5,  # Se puede calcular de competidores
+                    'recommended_density': {
+                        'min': 0.5,
+                        'max': 2.5
+                    }
+                },
+                
+                'content_structure': {
+                    'your_headings': content.count('#') + content.count('<h'),  # Estimación básica
+                    'average_headings': 4,
+                    'your_paragraphs': full_analysis['basic_metrics']['paragraph_count'],
+                    'average_paragraphs': 10
+                },
+                
+                'suggestions': full_analysis['optimization_suggestions'],
+                
+                'analysis_summary': {
+                    'analyzed_at': time.strftime('%Y-%m-%d %H:%M:%S'),
+                    'api_used': True,
+                    'cache_duration': 3600,
+                    'competitors_analyzed': full_analysis['term_frequency_analysis']['content_analysis'].get('competitors_analyzed', 0)
+                }
+            }
+        }
+        
+        return response
+    
+    def analyze_term_frequency_competitors(self, content, target_keywords, language=None):
+        """
+        Análisis completo de frecuencia de términos comparando con competidores
+        Similar a Surfer SEO
+        """
+        if not language:
+            language = self.language_detector.detect_language(content)
+        
+        cache_key = f"term_frequency:{language}:{hash(content)}:{hash(str(target_keywords))}"
+        cached_result = self.cache.get(cache_key)
+        
+        if cached_result:
+            logger.info("📋 Usando análisis de términos cached")
+            return cached_result
+        
+        logger.info("🎯 Iniciando análisis de frecuencia de términos...")
+        
+        # 1. Obtener contenido de competidores
+        competitors_content = self.get_competitors_content_for_terms(target_keywords, language)
+        
+        if not competitors_content:
+            logger.info("⚠️ No se pudieron obtener competidores, usando análisis básico")
+            return self.basic_term_frequency_analysis(content, target_keywords, language)
+        
+        # 2. Analizar frecuencia en competidores
+        competitor_term_analysis = self.analyze_competitors_term_frequency(
+            competitors_content, target_keywords, language
+        )
+        
+        # 3. Analizar contenido actual
+        my_term_analysis = self.analyze_content_terms(content, language)
+        
+        # 4. Generar recomendaciones basadas en competidores
+        term_recommendations = self.generate_term_recommendations(
+            my_term_analysis, competitor_term_analysis, target_keywords, content, language
+        )
+        
+        result = {
+            'term_frequency_analysis': {
+                'keywords': term_recommendations['keywords'],
+                'ngrams': term_recommendations['ngrams'],
+                'semantic_terms': term_recommendations['semantic_terms'],
+                'content_analysis': {
+                    'my_word_count': len(content.split()),
+                    'competitor_avg_words': competitor_term_analysis['avg_word_count'],
+                    'my_total_terms': sum(term['current_count'] for term in term_recommendations['keywords']),
+                    'competitor_avg_terms': competitor_term_analysis['avg_total_terms']
+                }
+            },
+            'competitors_analyzed': len(competitors_content),
+            'analysis_timestamp': time.time()
+        }
+        
+        # Cache por 2 horas
+        self.cache.set(cache_key, result, 7200)
+        return result
+
+    def get_competitors_content_for_terms(self, keywords, language, max_competitors=5):
+        """Obtener contenido de competidores para análisis de términos"""
+        try:
+            from ..services.serp_scraper import MultilingualSerpScraper
+            
+            serp_scraper = MultilingualSerpScraper(self.cache)
+            all_competitor_contents = []
+            
+            # Usar la keyword principal (primera) para encontrar competidores
+            main_keyword = keywords[0] if keywords else "contenido"
+            
+            logger.info(f"🔍 Buscando competidores para análisis de términos: {main_keyword}")
+            
+            serp_results = serp_scraper.get_serp_results(
+                main_keyword,
+                location='US' if language == 'en' else 'ES',
+                language=language,
+                pages=1
+            )
+            
+            if not serp_results or 'organic_results' not in serp_results:
+                return []
+            
+            # Obtener top resultados
+            top_results = serp_results['organic_results'][:max_competitors * 2]
+            
+            for result in top_results:
+                url = result.get('link', '')
+                if not url:
+                    continue
+                
+                logger.info(f"📄 Scrapeando para análisis de términos: {url}")
+                content = self.scrape_content(url)
+                
+                if content and len(content) > 500:  # Mínimo de contenido
+                    all_competitor_contents.append({
+                        'url': url,
+                        'content': content,
+                        'word_count': len(content.split()),
+                        'title': result.get('title', '')
+                    })
+                    
+                    if len(all_competitor_contents) >= max_competitors:
+                        break
+                
+                time.sleep(1)  # Delay entre requests
+            
+            logger.info(f"✅ Obtenidos {len(all_competitor_contents)} competidores para análisis")
+            return all_competitor_contents
+            
+        except Exception as e:
+            logger.info(f"Error obteniendo competidores para términos: {e}")
+            return []
+
+    def analyze_competitors_term_frequency(self, competitors_content, target_keywords, language):
+        """Analizar frecuencia de términos en contenido de competidores"""
+        from collections import defaultdict
+        
+        # Extraer todos los términos importantes de competidores
+        all_terms = defaultdict(list)  # term -> [count1, count2, count3...]
+        all_ngrams = defaultdict(list)  # ngram -> [count1, count2, count3...]
+        word_counts = []
+        total_terms_per_competitor = []
+        
+        for competitor in competitors_content:
+            content = competitor['content']
+            word_count = competitor['word_count']
+            word_counts.append(word_count)
+            
+            # Contar términos objetivo
+            target_term_count = 0
+            for keyword in target_keywords:
+                count = self.count_term_in_content(content, keyword, language)
+                all_terms[keyword].append(count)
+                target_term_count += count
+            
+            # Extraer términos semánticos importantes
+            semantic_terms = self.extract_semantic_terms(content, language, target_keywords)
+            for term, count in semantic_terms.items():
+                all_terms[term].append(count)
+                target_term_count += count
+            
+            # Analizar n-gramas (frases de 2-3 palabras)
+            ngrams = self.extract_important_ngrams(content, language, target_keywords)
+            for ngram, count in ngrams.items():
+                all_ngrams[ngram].append(count)
+            
+            total_terms_per_competitor.append(target_term_count)
+        
+        # Calcular promedios y estadísticas
+        avg_word_count = sum(word_counts) / len(word_counts) if word_counts else 1000
+        avg_total_terms = sum(total_terms_per_competitor) / len(total_terms_per_competitor) if total_terms_per_competitor else 0
+        
+        # Procesar estadísticas por término
+        term_stats = {}
+        for term, counts in all_terms.items():
+            if counts:  # Solo si hay datos
+                avg_count = sum(counts) / len(counts)
+                max_count = max(counts)
+                min_count = min(counts)
+                
+                term_stats[term] = {
+                    'avg_count': avg_count,
+                    'max_count': max_count,
+                    'min_count': min_count,
+                    'competitors_using': len([c for c in counts if c > 0]),
+                    'recommended_min': max(1, int(avg_count * 0.7)),
+                    'recommended_optimal': max(2, int(avg_count)),
+                    'recommended_max': max(3, int(avg_count * 1.3))
+                }
+        
+        # Procesar n-gramas
+        ngram_stats = {}
+        for ngram, counts in all_ngrams.items():
+            if counts and len([c for c in counts if c > 0]) >= 2:  # Al menos 2 competidores lo usan
+                avg_count = sum(counts) / len(counts)
+                ngram_stats[ngram] = {
+                    'avg_count': avg_count,
+                    'competitors_using': len([c for c in counts if c > 0]),
+                    'recommended_min': max(1, int(avg_count * 0.5)),
+                    'recommended_optimal': max(1, int(avg_count)),
+                    'recommended_max': max(2, int(avg_count * 1.2))
+                }
+        
+        return {
+            'term_stats': term_stats,
+            'ngram_stats': ngram_stats,
+            'avg_word_count': avg_word_count,
+            'avg_total_terms': avg_total_terms,
+            'competitors_analyzed': len(competitors_content)
+        }
+
+    def analyze_content_terms(self, content, language):
+        """Analizar términos en el contenido actual"""
+        clean_content = self.clean_content_for_analysis(content)
+        words = clean_content.split()
+        
+        return {
+            'word_count': len(words),
+            'unique_words': len(set(words)),
+            'content_cleaned': clean_content
+        }
+
+    def extract_semantic_terms(self, content, language, target_keywords, max_terms=10):
+        """Extraer términos semánticamente relacionados"""
+        clean_content = self.clean_content_for_analysis(content)
+        words = clean_content.split()
+        
+        # Filtrar stop words
+        stop_words = self.get_stop_words(language)
+        
+        # Contar palabras significativas
+        significant_words = [
+            word for word in words 
+            if len(word) > 3 and word not in stop_words
+            and not any(keyword.lower() in word.lower() for keyword in target_keywords)
+        ]
+        
+        from collections import Counter
+        word_freq = Counter(significant_words)
+        
+        # Filtrar palabras que aparecen al menos 2 veces
+        semantic_terms = {
+            word: count for word, count in word_freq.most_common(max_terms)
+            if count >= 2
+        }
+        
+        return semantic_terms
+
+    def extract_important_ngrams(self, content, language, target_keywords, n_values=[2, 3]):
+        """Extraer n-gramas importantes (frases de 2-3 palabras)"""
+        from collections import defaultdict, Counter
+        
+        clean_content = self.clean_content_for_analysis(content)
+        words = clean_content.split()
+        
+        ngrams = defaultdict(int)
+        stop_words = self.get_stop_words(language)
+        
+        for n in n_values:
+            for i in range(len(words) - n + 1):
+                ngram_words = words[i:i+n]
+                
+                # Filtrar n-gramas que contengan stop words o sean muy cortos
+                if any(len(word) < 3 for word in ngram_words):
+                    continue
+                if any(word in stop_words for word in ngram_words):
+                    continue
+                
+                ngram = ' '.join(ngram_words)
+                ngrams[ngram] += 1
+        
+        # Filtrar y devolver solo los más frecuentes
+        important_ngrams = {
+            ngram: count for ngram, count in ngrams.items()
+            if count >= 2
+        }
+        
+        return dict(Counter(important_ngrams).most_common(8))
+
+    def count_term_in_content(self, content, term, language):
+        """Contar ocurrencias de un término específico"""
+        clean_content = self.clean_content_for_analysis(content)
+        term_clean = self.clean_content_for_analysis(term)
+        
+        # Contar ocurrencias exactas
+        exact_count = clean_content.lower().count(term_clean.lower())
+        
+        # Contar variaciones (plural/singular)
+        variations = self.get_term_variations(term_clean, language)
+        total_count = exact_count
+        
+        for variation in variations:
+            if variation.lower() != term_clean.lower():
+                total_count += clean_content.lower().count(variation.lower())
+        
+        return total_count
+
+    def get_term_variations(self, term, language):
+        """Obtener variaciones de un término (plural, singular, etc.)"""
+        variations = [term]
+        
+        if language == 'es':
+            # Variaciones en español
+            if term.endswith('s'):
+                variations.append(term[:-1])  # Plural a singular
+            else:
+                variations.append(term + 's')  # Singular a plural
+            
+            # Variaciones de género básicas
+            if term.endswith('o'):
+                variations.append(term[:-1] + 'a')
+            elif term.endswith('a'):
+                variations.append(term[:-1] + 'o')
+                
+        elif language == 'en':
+            # Variaciones en inglés
+            if term.endswith('s'):
+                variations.append(term[:-1])
+            else:
+                variations.append(term + 's')
+            
+            if term.endswith('y'):
+                variations.append(term[:-1] + 'ies')
+        
+        return list(set(variations))
+    
+    def clean_content_for_analysis(self, content):
+        """Limpiar contenido para análisis de términos"""
+        # Remover HTML
+        content = re.sub(r'<[^>]+>', ' ', content)
+        
+        # Normalizar espacios
+        content = re.sub(r'\s+', ' ', content)
+        
+        # Mantener solo letras, números y espacios (incluyendo acentos)
+        content = re.sub(r'[^\w\s]', ' ', content, flags=re.UNICODE)
+        
+        return content.strip()
+
+    def generate_term_recommendations(self, my_analysis, competitor_analysis, target_keywords, my_content, language):
+        """Generar recomendaciones específicas para cada término"""
+        
+        recommendations = {
+            'keywords': [],
+            'ngrams': [],
+            'semantic_terms': []
+        }
+        
+        my_word_count = my_analysis['word_count']
+        
+        # 1. Analizar keywords principales
+        for keyword in target_keywords:
+            current_count = self.count_term_in_content(my_content, keyword, language)
+            
+            if keyword in competitor_analysis['term_stats']:
+                stats = competitor_analysis['term_stats'][keyword]
+                
+                recommendations['keywords'].append({
+                    'term': keyword,
+                    'type': 'primary_keyword',
+                    'current_count': current_count,
+                    'recommended_count': {
+                        'min': stats['recommended_min'],
+                        'optimal': stats['recommended_optimal'],
+                        'max': stats['recommended_max']
+                    },
+                    'competitor_average': stats['avg_count'],
+                    'priority': self.calculate_term_priority(current_count, stats),
+                    'competitors_using': stats['competitors_using']
+                })
+        
+        # 2. Términos semánticos importantes
+        semantic_limit = 8
+        semantic_count = 0
+        
+        for term, stats in competitor_analysis['term_stats'].items():
+            if term not in target_keywords and semantic_count < semantic_limit:
+                current_count = self.count_term_in_content(my_content, term, language)
+                
+                # Solo incluir si es significativo
+                if stats['competitors_using'] >= 2 and stats['avg_count'] >= 2:
+                    recommendations['semantic_terms'].append({
+                        'term': term,
+                        'type': 'semantic',
+                        'current_count': current_count,
+                        'recommended_count': {
+                            'min': stats['recommended_min'],
+                            'optimal': stats['recommended_optimal'],
+                            'max': stats['recommended_max']
+                        },
+                        'competitor_average': stats['avg_count'],
+                        'priority': self.calculate_term_priority(current_count, stats),
+                        'competitors_using': stats['competitors_using']
+                    })
+                    semantic_count += 1
+        
+        # 3. N-gramas importantes
+        for ngram, stats in competitor_analysis['ngram_stats'].items():
+            current_count = self.count_term_in_content(my_content, ngram, language)
+            
+            recommendations['ngrams'].append({
+                'term': ngram,
+                'type': 'ngram',
+                'current_count': current_count,
+                'recommended_count': {
+                    'min': stats['recommended_min'],
+                    'optimal': stats['recommended_optimal'],
+                    'max': stats['recommended_max']
+                },
+                'competitor_average': stats['avg_count'],
+                'priority': self.calculate_term_priority(current_count, stats),
+                'competitors_using': stats['competitors_using']
+            })
+        
+        return recommendations
+
+    def calculate_term_priority(self, current_count, competitor_stats):
+        """Calcular prioridad de optimización para un término"""
+        optimal_count = competitor_stats['recommended_optimal']
+        gap = optimal_count - current_count
+        
+        if gap > optimal_count * 0.7:  # Falta más del 70%
+            return 'high'
+        elif gap > optimal_count * 0.3:  # Falta más del 30%
+            return 'medium'
+        else:
+            return 'low'
+
+    def basic_term_frequency_analysis(self, content, target_keywords, language):
+        """Análisis básico cuando no hay datos de competidores"""
+        logger.info("📊 Realizando análisis básico de términos")
+        
+        my_word_count = len(content.split())
+        recommendations = {
+            'keywords': [],
+            'ngrams': [],
+            'semantic_terms': []
+        }
+        
+        # Análisis básico para keywords principales
+        for keyword in target_keywords:
+            current_count = self.count_term_in_content(content, keyword, language)
+            
+            # Estimaciones básicas basadas en longitud del contenido
+            if my_word_count < 500:
+                optimal = 3
+            elif my_word_count < 1000:
+                optimal = 5
+            else:
+                optimal = max(7, int(my_word_count / 200))
+            
+            recommendations['keywords'].append({
+                'term': keyword,
+                'type': 'primary_keyword',
+                'current_count': current_count,
+                'recommended_count': {
+                    'min': max(1, int(optimal * 0.6)),
+                    'optimal': optimal,
+                    'max': int(optimal * 1.4)
+                },
+                'competitor_average': optimal,  # Estimación
+                'priority': 'high' if current_count < optimal * 0.5 else 'medium',
+                'competitors_using': 0  # No hay datos
+            })
+        
+        return {
+            'term_frequency_analysis': {
+                'keywords': recommendations['keywords'],
+                'ngrams': recommendations['ngrams'],
+                'semantic_terms': recommendations['semantic_terms'],
+                'content_analysis': {
+                    'my_word_count': my_word_count,
+                    'competitor_avg_words': 0,
+                    'my_total_terms': sum(term['current_count'] for term in recommendations['keywords']),
+                    'competitor_avg_terms': 0
+                }
+            },
+            'competitors_analyzed': 0,
+            'analysis_timestamp': time.time()
+        }
