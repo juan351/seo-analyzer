@@ -1783,22 +1783,25 @@ class MultilingualContentAnalyzer:
     # AGREGAR ESTOS MÉTODOS A TU CÓDIGO ORIGINAL (no reemplazar nada)
 
     def analyze_competitors_with_terms(self, keywords, my_domain, my_content, top_n=5):
-        """Versión optimizada sin duplicar calls"""
+        """Versión con debugging completo"""
         try:
-            # USAR SOLO UNA LLAMADA A SERP
-            language = self.language_detector.detect_language(my_content)
+            logger.info("🚀 INICIANDO analyze_competitors_with_terms")
             
-            # ✅ Configurar ubicación correcta según idioma
+            language = self.language_detector.detect_language(my_content)
             location = 'ES' if language == 'es' else 'US'
             
             logger.info(f"🏆 Análisis optimizado para idioma: {language}, ubicación: {location}")
             
-            # UNA SOLA LLAMADA a la API
+            # Importar aquí para evitar problemas
+            from urllib.parse import urlparse
             from ..services.serp_scraper import MultilingualSerpScraper
+            
+            logger.info("📡 Creando serp_scraper...")
             serp_scraper = MultilingualSerpScraper(self.cache)
             
-            # Usar solo la primera keyword para evitar múltiples calls
             main_keyword = keywords[0]
+            logger.info(f"🔍 Buscando con keyword: {main_keyword}")
+            
             serp_results = serp_scraper.get_serp_results(
                 main_keyword,
                 location=location,
@@ -1806,78 +1809,212 @@ class MultilingualContentAnalyzer:
                 pages=1
             )
             
+            logger.info(f"📊 SERP results obtenidos: {serp_results is not None}")
+            
             if not serp_results or 'organic_results' not in serp_results:
+                logger.error("❌ No hay resultados SERP")
                 return {'error': 'No SERP results found'}
             
-            # Procesar resultados y hacer análisis
+            organic_results = serp_results['organic_results']
+            logger.info(f"🔢 Procesando {len(organic_results)} resultados orgánicos")
+            
             competitors = []
             competitors_with_content = []
             
-            for result in serp_results['organic_results'][:5]:
+            for i, result in enumerate(organic_results[:5]):
+                logger.info(f"🔄 Procesando resultado {i+1}/5")
+                
                 url = result.get('link', '')
-                if url and my_domain not in url:
-                    competitors.append({
-                        'domain': urlparse(url).netloc,
-                        'url': url,
-                        'title': result.get('title', ''),
-                        'position': result.get('position', 0),
-                        'snippet': result.get('snippet', '')
-                    })
+                title = result.get('title', '')
+                
+                logger.info(f"🌐 URL: {url}")
+                logger.info(f"📰 Title: {title}")
+                
+                if not url:
+                    logger.info("⚠️ URL vacía, saltando...")
+                    continue
                     
-                    # Scraping con límite de tiempo
-                    if len(competitors_with_content) < 3:  # Solo top 3
-                        content = self.scrape_content_fast(url)  # Versión más rápida
-                        if content and len(content) > 300:
+                if my_domain in url:
+                    logger.info(f"🚫 URL contiene mi dominio ({my_domain}), saltando...")
+                    continue
+                
+                try:
+                    domain = urlparse(url).netloc
+                    logger.info(f"🏠 Dominio extraído: {domain}")
+                except Exception as e:
+                    logger.error(f"❌ Error extrayendo dominio: {e}")
+                    continue
+                
+                competitor_data = {
+                    'domain': domain,
+                    'url': url,
+                    'title': title,
+                    'position': result.get('position', 0),
+                    'snippet': result.get('snippet', '')
+                }
+                
+                competitors.append(competitor_data)
+                logger.info(f"✅ Competidor agregado: {domain}")
+                
+                # Scraping solo para los primeros 3
+                if len(competitors_with_content) < 3:
+                    logger.info(f"📄 Scrapeando contenido de: {url}")
+                    try:
+                        content = self.scrape_content_fast(url)
+                        logger.info(f"📝 Contenido obtenido: {len(content) if content else 0} caracteres")
+                        
+                        if content and len(content) > 200:
                             competitors_with_content.append({
-                                'url': url, 'content': content, 'title': result.get('title', '')
+                                'url': url,
+                                'content': content,
+                                'title': title,
+                                'domain': domain
                             })
+                            logger.info(f"✅ Contenido agregado para análisis: {domain}")
+                        else:
+                            logger.info("⚠️ Contenido muy corto o vacío")
+                            
+                    except Exception as e:
+                        logger.error(f"❌ Error scrapeando {url}: {e}")
+                        continue
+            
+            logger.info(f"📊 RESUMEN: {len(competitors)} competidores encontrados, {len(competitors_with_content)} con contenido")
             
             # Análisis de términos
-            term_analysis = None
+            term_analysis = {}
             if competitors_with_content:
-                term_analysis = self.analyze_terms_from_real_competitors(
-                    my_content, keywords, competitors_with_content, language
-                )
+                logger.info("🎯 Iniciando análisis de términos...")
+                try:
+                    term_analysis = self.analyze_terms_from_real_competitors_simple(
+                        my_content, keywords, competitors_with_content, language
+                    )
+                    logger.info(f"✅ Análisis de términos completado: {len(term_analysis.get('keywords', []))} keywords analizadas")
+                except Exception as e:
+                    logger.error(f"❌ Error en análisis de términos: {e}")
+                    term_analysis = {}
+            else:
+                logger.info("⚠️ Sin contenido de competidores para análisis de términos")
             
-            # Respuesta unificada
-            return {
+            # Construir respuesta
+            logger.info("🔧 Construyendo respuesta final...")
+            response = {
                 'keywords_analyzed': keywords,
                 'my_domain': my_domain,
                 'competitors_by_keyword': {keywords[0]: competitors},
-                'unique_competitors': [{'domain': comp['domain'], 'urls': [comp['url']], 'titles': [comp['title']]} for comp in competitors],
+                'unique_competitors': [
+                    {
+                        'domain': comp['domain'], 
+                        'urls': [comp['url']], 
+                        'titles': [comp['title']],
+                        'avg_position': comp['position'],
+                        'keywords_ranking': keywords
+                    } 
+                    for comp in competitors
+                ],
                 'total_competitors_found': len(competitors),
-                'term_frequency_analysis': term_analysis or {},
+                'term_frequency_analysis': term_analysis,
                 'analysis_summary': {
                     'avg_competitors_per_keyword': len(competitors),
-                    'most_common_competitors': [{'domain': comp['domain'], 'appearances': 1} for comp in competitors[:5]]
+                    'most_common_competitors': [
+                        {'domain': comp['domain'], 'appearances': 1} 
+                        for comp in competitors[:5]
+                    ]
                 }
             }
             
+            logger.info("🎉 ANÁLISIS COMPLETADO EXITOSAMENTE")
+            return response
+            
         except Exception as e:
-            logger.error(f"Error en análisis optimizado: {e}")
-            return {'error': str(e)}
+            logger.error(f"💥 ERROR CRÍTICO en analyze_competitors_with_terms: {str(e)}")
+            logger.error(f"💥 Tipo de error: {type(e).__name__}")
+            import traceback
+            logger.error(f"💥 Traceback: {traceback.format_exc()}")
+            return {'error': f'Critical error: {str(e)}'}
 
-    def scrape_content_fast(self, url, timeout=5):
-        """Scraping rápido con timeout corto"""
+    def scrape_content_fast(self, url, timeout=8):
+        """Scraping rápido y seguro"""
         try:
+            logger.info(f"🕷️ Scrapeando rápido: {url}")
+            
             response = requests.get(url, headers=self.headers, timeout=timeout)
             response.raise_for_status()
             
+            logger.info(f"📡 Response recibido: {len(response.content)} bytes")
+            
             soup = BeautifulSoup(response.content, 'html.parser')
             
-            # Scraping muy básico y rápido
-            for script in soup(["script", "style"]):
-                script.decompose()
+            # Limpieza básica
+            for tag in soup(["script", "style", "nav", "header", "footer"]):
+                tag.decompose()
             
-            # Solo contenido principal
-            main_content = soup.find('article') or soup.find('main') or soup.find('body')
-            if main_content:
-                text = main_content.get_text(strip=True)[:3000]  # Límite de caracteres
-                return re.sub(r'\s+', ' ', text)
+            # Buscar contenido principal
+            main_selectors = ['article', 'main', '.content', '.post-content']
+            content = ""
             
+            for selector in main_selectors:
+                element = soup.select_one(selector)
+                if element:
+                    content = element.get_text(strip=True)
+                    if len(content) > 100:
+                        break
+            
+            # Fallback al body completo
+            if len(content) < 100:
+                body = soup.find('body')
+                if body:
+                    content = body.get_text(strip=True)
+            
+            # Limpiar y limitar
+            content = re.sub(r'\s+', ' ', content)[:2000]  # Máximo 2000 caracteres
+            
+            logger.info(f"✅ Contenido extraído: {len(content)} caracteres")
+            return content
+            
+        except Exception as e:
+            logger.error(f"❌ Error en scrape_content_fast para {url}: {e}")
             return ""
-        except:
-            return ""
+
+    def analyze_terms_from_real_competitors_simple(self, my_content, keywords, competitors_content, language):
+        """Versión simple del análisis de términos"""
+        logger.info("🔍 Iniciando análisis simple de términos")
+        
+        try:
+            # Análisis básico por ahora
+            my_word_count = len(my_content.split())
+            competitor_word_counts = [len(comp['content'].split()) for comp in competitors_content]
+            avg_competitor_words = sum(competitor_word_counts) / len(competitor_word_counts) if competitor_word_counts else 1000
+            
+            keyword_analysis = []
+            for keyword in keywords:
+                my_count = my_content.lower().count(keyword.lower())
+                comp_counts = [comp['content'].lower().count(keyword.lower()) for comp in competitors_content]
+                avg_comp_count = sum(comp_counts) / len(comp_counts) if comp_counts else 2
+                
+                keyword_analysis.append({
+                    'term': keyword,
+                    'type': 'primary_keyword',
+                    'current_count': my_count,
+                    'competitor_average': round(avg_comp_count, 1),
+                    'recommended_count': max(2, int(avg_comp_count)),
+                    'priority': 'high' if my_count < avg_comp_count * 0.5 else 'medium'
+                })
+            
+            result = {
+                'keywords': keyword_analysis,
+                'content_analysis': {
+                    'my_word_count': my_word_count,
+                    'competitor_avg_words': int(avg_competitor_words),
+                    'competitors_analyzed': len(competitors_content)
+                }
+            }
+            
+            logger.info(f"✅ Análisis simple completado: {len(keyword_analysis)} términos")
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ Error en análisis simple: {e}")
+            return {}
 
     def analyze_terms_from_real_competitors(self, my_content, keywords, competitors_content, language):
         """Análisis COMPLETO tipo Surfer SEO usando competidores reales"""
@@ -1960,6 +2097,48 @@ class MultilingualContentAnalyzer:
                 'total_competitor_ngrams': len(competitor_ngrams)
             }
         }
+
+
+    def analyze_terms_from_real_competitors_simple(self, my_content, keywords, competitors_content, language):
+        """Versión simple del análisis de términos"""
+        logger.info("🔍 Iniciando análisis simple de términos")
+        
+        try:
+            # Análisis básico por ahora
+            my_word_count = len(my_content.split())
+            competitor_word_counts = [len(comp['content'].split()) for comp in competitors_content]
+            avg_competitor_words = sum(competitor_word_counts) / len(competitor_word_counts) if competitor_word_counts else 1000
+            
+            keyword_analysis = []
+            for keyword in keywords:
+                my_count = my_content.lower().count(keyword.lower())
+                comp_counts = [comp['content'].lower().count(keyword.lower()) for comp in competitors_content]
+                avg_comp_count = sum(comp_counts) / len(comp_counts) if comp_counts else 2
+                
+                keyword_analysis.append({
+                    'term': keyword,
+                    'type': 'primary_keyword',
+                    'current_count': my_count,
+                    'competitor_average': round(avg_comp_count, 1),
+                    'recommended_count': max(2, int(avg_comp_count)),
+                    'priority': 'high' if my_count < avg_comp_count * 0.5 else 'medium'
+                })
+            
+            result = {
+                'keywords': keyword_analysis,
+                'content_analysis': {
+                    'my_word_count': my_word_count,
+                    'competitor_avg_words': int(avg_competitor_words),
+                    'competitors_analyzed': len(competitors_content)
+                }
+            }
+            
+            logger.info(f"✅ Análisis simple completado: {len(keyword_analysis)} términos")
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ Error en análisis simple: {e}")
+            return {}        
 
     def analyze_real_competitors_terms(self, my_content, keywords, competitors_content, language):
         """Análisis de términos usando contenido REAL de competidores"""
