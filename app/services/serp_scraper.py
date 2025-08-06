@@ -6,6 +6,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from selenium.webdriver.chrome.service import Service
+from urllib.parse import urlparse, urlencode
 import time
 import random
 import requests
@@ -699,7 +700,8 @@ class MultilingualSerpScraper:
         except Exception as e:
             logger.info(f"❌ Error en extracción avanzada: {e}")
         
-        return results
+        filtered_results = self.filter_realistic_competitors(results)
+        return filtered_results
 
     def extract_url_robust(self, element):
         """Extracción robusta de URLs"""
@@ -1122,9 +1124,18 @@ class MultilingualSerpScraper:
                 if 'items' not in data:
                     logger.info("⚠️ No items in Google API response")
                     break
+
+                filtered_items = []
+                for item in data['items']:
+                    url = item.get('link', '')
+                    if url and not self.is_high_authority_domain(url):
+                        filtered_items.append(item)
+                    else:
+                        domain = urlparse(url).netloc if url else 'unknown'
+                        logger.info(f"🚫 Google API: Saltando dominio de autoridad alta: {domain}")
                 
-                # Procesar resultados
-                for i, item in enumerate(data['items']):
+                # Procesar SOLO los resultados filtrados
+                for i, item in enumerate(filtered_items):
                     position = (page * 10) + i + 1
                     
                     results['organic_results'].append({
