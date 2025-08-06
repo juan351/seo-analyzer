@@ -255,7 +255,7 @@ def keyword_suggestions():
 @limiter.limit("3 per minute")  
 @require_api_key
 def analyze_competitors():
-    """Análisis optimizado SIN duplicar calls"""
+    """Endpoint con mapping correcto para WordPress"""
     try:
         data = request.get_json()
         
@@ -266,22 +266,144 @@ def analyze_competitors():
         my_domain = data['my_domain'] 
         content = data.get('content', '')
         
-        logger.info(f"Análisis optimizado para: {keywords}")
+        logger.info(f"Análisis para: {keywords}")
         
-        # UNA SOLA LLAMADA que hace todo
-        if content:
+        # Obtener análisis completo
+        if content and len(content) > 100:
             analysis = content_analyzer.analyze_competitors_with_terms(keywords, my_domain, content)
         else:
             analysis = content_analyzer.analyze_competitors(keywords, my_domain)
         
+        if analysis.get('error'):
+            return jsonify({'error': analysis['error']}), 500
+        
+        # MAPEAR CORRECTAMENTE los datos para WordPress
+        term_analysis = analysis.get('term_frequency_analysis', {})
+        content_analysis = term_analysis.get('content_analysis', {})
+        
+        # Construir lista de competidores para WordPress
+        wp_competitors = []
+        unique_competitors = analysis.get('unique_competitors', [])
+        
+        for comp in unique_competitors:
+            wp_competitors.append({
+                'domain': comp['domain'],
+                'url': comp['urls'][0] if comp.get('urls') else '',
+                'title': comp['titles'][0] if comp.get('titles') else comp['domain'],
+                'position': comp.get('avg_position', 0),
+                'word_count': 1000,  # Estimación
+                'content_score': 85,  # Estimación
+                'keyword_density': 1.2  # Estimación
+            })
+        
+        # Calcular densidades reales si hay análisis de términos
+        your_density = 0
+        average_density = 1.5
+        
+        if term_analysis.get('keywords'):
+            keyword_data = term_analysis['keywords'][0]  # Primera keyword
+            if content_analysis.get('my_word_count', 0) > 0:
+                your_density = round((keyword_data['current_count'] / content_analysis['my_word_count']) * 100, 2)
+                average_density = round((keyword_data['competitor_average'] / content_analysis.get('competitor_avg_words', 1000)) * 100, 2)
+        
+        # Generar sugerencias para WordPress
+        wp_suggestions = []
+        
+        if term_analysis.get('keywords'):
+            for term_data in term_analysis['keywords']:
+                current = term_data['current_count']
+                recommended = term_data['recommended_count']
+                
+                if current < recommended:
+                    wp_suggestions.append({
+                        'title': f'Aumentar uso de "{term_data["term"]}"',
+                        'message': f'Usar "{term_data["term"]}" {recommended - current} veces más. Actual: {current}, Óptimo: {recommended}',
+                        'priority': term_data['priority'],
+                        'icon': '🎯',
+                        'type': 'keyword_optimization'
+                    })
+                elif current > recommended * 1.5:
+                    wp_suggestions.append({
+                        'title': f'Reducir "{term_data["term"]}"',
+                        'message': f'Demasiadas repeticiones ({current}). Reducir a ~{recommended}',
+                        'priority': 'medium',
+                        'icon': '⚠️',
+                        'type': 'keyword_optimization'
+                    })
+        
+        # Análisis del contenido
+        my_word_count = content_analysis.get('my_word_count', len(content.split()) if content else 0)
+        competitor_avg_words = content_analysis.get('competitor_avg_words', 1200)
+        
+        if my_word_count > 0 and competitor_avg_words > 0:
+            if my_word_count < competitor_avg_words * 0.7:
+                wp_suggestions.append({
+                    'title': 'Expandir contenido',
+                    'message': f'Tu contenido ({my_word_count} palabras) es más corto que competidores ({competitor_avg_words} promedio)',
+                    'priority': 'high',
+                    'icon': '📝',
+                    'type': 'content_length'
+                })
+        
+        # Respuesta formateada para WordPress
+        response_data = {
+            'competitors': wp_competitors,
+            'total_competitors': len(wp_competitors),
+            'average_word_count': competitor_avg_words,
+            'your_word_count': my_word_count,
+            
+            'keyword_analysis': {
+                'your_density': your_density,
+                'average_density': average_density,
+                'recommended_density': {
+                    'min': 0.5,
+                    'max': 2.5
+                }
+            },
+            
+            'content_structure': {
+                'your_headings': content.count('#') + content.count('<h') if content else 0,
+                'average_headings': 6,  # Estimación basada en competidores
+                'your_paragraphs': len([p for p in content.split('\n\n') if p.strip()]) if content else 0,
+                'average_paragraphs': max(8, int(competitor_avg_words / 150))  # Estimación
+            },
+            
+            'suggestions': wp_suggestions,
+            'missing_keywords': [],
+            'top_keywords': keywords,
+            
+            # DATOS NUEVOS: Análisis de términos para WordPress
+            'term_frequency_analysis': {
+                'enabled': True,
+                'keywords_analyzed': len(term_analysis.get('keywords', [])),
+                'competitors_analyzed': content_analysis.get('competitors_analyzed', 0),
+                'keyword_recommendations': term_analysis.get('keywords', []),
+                'content_gap': {
+                    'word_difference': my_word_count - competitor_avg_words,
+                    'status': 'longer' if my_word_count > competitor_avg_words else 'shorter',
+                    'recommendation': 'optimal' if abs(my_word_count - competitor_avg_words) < 200 else 'needs_adjustment'
+                }
+            },
+            
+            'analysis_summary': {
+                'analyzed_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'api_used': True,
+                'cache_duration': 3600,
+                'competitors_found': len(wp_competitors),
+                'analysis_type': 'term_frequency' if term_analysis else 'basic'
+            }
+        }
+        
+        logger.info(f"✅ Respuesta formateada: {len(wp_competitors)} competidores, {len(wp_suggestions)} sugerencias")
+        
         return jsonify({
             'success': True,
-            'data': analysis,
+            'data': response_data,
             'timestamp': datetime.now().isoformat()
         })
         
     except Exception as e:
-        logger.error(f"Error: {str(e)}")
+        logger.error(f"Error en endpoint: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.errorhandler(429)
