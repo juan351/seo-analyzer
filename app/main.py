@@ -302,7 +302,7 @@ def analyze_competitors():
                     'title': real_data['title'],
                     'position': real_data['position'],
                     'word_count': real_data['word_count'],  # ✅ REAL
-                    'content_score': real_data['seo_score'],  # ✅ REAL  
+                    'seo_score': real_data['seo_score'],  # ✅ REAL  
                     'keyword_density': real_data['keyword_density']  # ✅ REAL
                 })
                 logger.info(f"✅ Usando datos reales para {real_data['domain']}: {real_data['word_count']} palabras")
@@ -319,7 +319,7 @@ def analyze_competitors():
                     'title': comp['titles'][0] if comp.get('titles') else comp['domain'],
                     'position': estimated_position,
                     'word_count': int(estimated_word_count * (0.8 + (i * 0.1))),
-                    'content_score': estimated_score,
+                    'seo_score': estimated_score,
                     'keyword_density': max(0.5, estimated_density)
                 })
                 logger.info(f"⚠️ Usando estimación para {comp['domain']}")
@@ -327,7 +327,7 @@ def analyze_competitors():
         # Calcular promedios reales
         if wp_competitors:
             real_avg_words = sum(comp['word_count'] for comp in wp_competitors) / len(wp_competitors)
-            real_avg_score = sum(comp['content_score'] for comp in wp_competitors) / len(wp_competitors)
+            real_avg_score = sum(comp['seo_score'] for comp in wp_competitors) / len(wp_competitors)
             real_avg_density = sum(comp['keyword_density'] for comp in wp_competitors) / len(wp_competitors)
         else:
             real_avg_words = 1200
