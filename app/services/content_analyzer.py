@@ -1816,6 +1816,10 @@ class MultilingualContentAnalyzer:
             if not serp_results or 'organic_results' not in serp_results:
                 return {'error': 'No SERP results found'}
             
+            # Los resultados YA están filtrados por el SERP scraper
+            organic_results = serp_results['organic_results']
+            logger.info(f"🎯 Recibidos {len(organic_results)} competidores realistas")
+
             competitors = []
             competitors_with_content = []
             competitors_real_data = []  # NUEVO: Array para datos reales
@@ -1843,7 +1847,7 @@ class MultilingualContentAnalyzer:
                 competitors.append(competitor_data)
                 
                 # Scraping para obtener datos reales
-                if len(competitors_with_content) < 3:
+                if len(competitors_with_content) < 4:
                     try:
                         content = self.scrape_content_fast(url)
                         if content and len(content) > 200:
@@ -1884,7 +1888,7 @@ class MultilingualContentAnalyzer:
                                 'content_preview': content[:200] + '...' if len(content) > 200 else content
                             })
                             
-                            logger.info(f"✅ Datos reales: {domain} - {word_count} palabras, density: {keyword_density}%")
+                            logger.info(f"✅ Competidor realista scrapeado: {domain} - {word_count} palabras, density: {keyword_density}%")
                             
                     except Exception as e:
                         logger.error(f"❌ Error scrapeando {url}: {e}")
@@ -1895,10 +1899,10 @@ class MultilingualContentAnalyzer:
                             'url': url,
                             'title': title,
                             'position': position,
-                            'word_count': 800 + (i * 200),  # Estimación variable
-                            'char_count': 4000 + (i * 1000),
-                            'keyword_density': max(0.5, 2.0 - (i * 0.3)),  # Estimación decreciente
-                            'seo_score': max(60, 90 - (position * 5)),
+                            'word_count': 600 + (i * 150),  # Estimación más baja para sitios normales
+                            'char_count': 3000 + (i * 750),
+                            'keyword_density': max(0.8, 2.2 - (i * 0.2)),
+                            'seo_score': max(65, 85 - (position * 3)), # Scores más realistas
                             'content_preview': 'Contenido no disponible',
                             'scraped': False
                         })

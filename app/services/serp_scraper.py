@@ -58,6 +58,141 @@ class MultilingualSerpScraper:
             'DE': {'domain': 'google.de', 'gl': 'de', 'hl': 'de'},      # Alemania
         }
 
+        self.high_authority_domains = {
+            # Redes sociales
+            'facebook.com', 'www.facebook.com', 'm.facebook.com',
+            'instagram.com', 'www.instagram.com',
+            'twitter.com', 'www.twitter.com', 'x.com',
+            'linkedin.com', 'www.linkedin.com',
+            'tiktok.com', 'www.tiktok.com',
+            'pinterest.com', 'www.pinterest.com',
+            'snapchat.com', 'www.snapchat.com',
+            
+            # Plataformas de video/contenido
+            'youtube.com', 'www.youtube.com', 'm.youtube.com',
+            'vimeo.com', 'www.vimeo.com',
+            'twitch.tv', 'www.twitch.tv',
+            'netflix.com', 'www.netflix.com',
+            'hulu.com', 'www.hulu.com',
+            
+            # E-commerce gigante
+            'amazon.com', 'www.amazon.com', 'amazon.es', 'amazon.co.uk',
+            'ebay.com', 'www.ebay.com', 'ebay.es',
+            'mercadolibre.com', 'www.mercadolibre.com',
+            'alibaba.com', 'www.alibaba.com',
+            'etsy.com', 'www.etsy.com',
+            
+            # Autoridad informativa
+            'wikipedia.org', 'es.wikipedia.org', 'en.wikipedia.org',
+            'reddit.com', 'www.reddit.com', 'old.reddit.com',
+            'quora.com', 'www.quora.com', 'es.quora.com',
+            'stackoverflow.com', 'www.stackoverflow.com',
+            
+            # Entretenimiento/Info
+            'imdb.com', 'www.imdb.com',
+            'rottentomatoes.com', 'www.rottentomatoes.com',
+            'metacritic.com', 'www.metacritic.com',
+            
+            # Tech giants
+            'google.com', 'www.google.com',
+            'microsoft.com', 'www.microsoft.com',
+            'apple.com', 'www.apple.com',
+            'github.com', 'www.github.com',
+            
+            # Sitios gubernamentales/edu
+            '.gov', '.edu', '.mil',
+            'europa.eu', 'who.int', 'unicef.org',
+            
+            # Otros sitios imposibles de superar
+            'booking.com', 'www.booking.com',
+            'expedia.com', 'www.expedia.com',
+            'airbnb.com', 'www.airbnb.com',
+        }
+
+    def is_high_authority_domain(self, url):
+        """Verificar si un dominio es de autoridad alta (no competidor realista)"""
+        try:
+            from urllib.parse import urlparse
+            domain = urlparse(url).netloc.lower().replace('www.', '')
+            
+            # Verificar dominios exactos
+            if domain in self.high_authority_domains:
+                return True
+            
+            # Verificar subdominios de sitios conocidos
+            for blocked_domain in self.high_authority_domains:
+                if blocked_domain.startswith('.'):  # Extensiones como .gov
+                    if domain.endswith(blocked_domain):
+                        return True
+                elif domain.endswith('.' + blocked_domain.replace('www.', '')):
+                    return True
+            
+            return False
+            
+        except Exception:
+            return False
+
+    def filter_realistic_competitors(self, results, min_competitors=5, max_competitors=10):
+        """Filtrar solo competidores realistas"""
+        realistic_results = []
+        
+        for result in results:
+            url = result.get('link', '')
+            if not url:
+                continue
+            
+            # Saltar dominios de autoridad alta
+            if self.is_high_authority_domain(url):
+                domain = urlparse(url).netloc.lower()
+                logger.info(f"🚫 Saltando dominio de autoridad alta: {domain}")
+                continue
+            
+            realistic_results.append(result)
+            
+            # Parar cuando tengamos suficientes competidores realistas
+            if len(realistic_results) >= max_competitors:
+                break
+        
+        logger.info(f"✅ Filtrados {len(realistic_results)} competidores realistas de {len(results)} totales")
+        return realistic_results
+
+    def extract_organic_results_advanced(self, soup):
+        """Extracción con filtrado de competidores realistas"""
+        results = []
+        position = 1
+        
+        try:
+            # ... código de extracción existente ...
+            
+            # Después de extraer todos los resultados
+            all_results = []  # Aquí van todos los resultados extraídos
+            
+            for element in result_elements:
+                try:
+                    # ... código de extracción existente ...
+                    
+                    if title and url:
+                        all_results.append({
+                            'position': position,
+                            'title': title,
+                            'link': url,
+                            'snippet': snippet,
+                            'domain': self.extract_domain(url)
+                        })
+                        position += 1
+                        
+                except Exception as e:
+                    continue
+            
+            # FILTRAR solo competidores realistas
+            realistic_results = self.filter_realistic_competitors(all_results)
+            
+            return realistic_results
+            
+        except Exception as e:
+            logger.info(f"❌ Error en extracción: {e}")
+            return results
+
     def setup_driver(self):
         """Configurar driver de Selenium con anti-detección mejorada"""
         if self.driver:
@@ -65,54 +200,226 @@ class MultilingualSerpScraper:
             
         try:
             chrome_options = Options()
-            
-            # Configuración anti-detección
-            chrome_options.add_argument('--headless=new')  # Nuevo modo headless
+        
+            # ✅ CONFIGURACIÓN STEALTH MEJORADA
+            chrome_options.add_argument('--headless=new')
             chrome_options.add_argument('--no-sandbox')
             chrome_options.add_argument('--disable-dev-shm-usage')
             chrome_options.add_argument('--disable-gpu')
-            chrome_options.add_argument('--window-size=1366,768')  # Resolución común
+            
+            # ✅ VIEWPORT REALISTA Y VARIABLE
+            viewports = [
+                '--window-size=1920,1080',
+                '--window-size=1366,768', 
+                '--window-size=1440,900',
+                '--window-size=1536,864'
+            ]
+            chrome_options.add_argument(random.choice(viewports))
+            
+            # ✅ ANTI-DETECCIÓN AVANZADA
             chrome_options.add_argument('--disable-blink-features=AutomationControlled')
             chrome_options.add_argument('--disable-extensions')
             chrome_options.add_argument('--disable-plugins')
-            chrome_options.add_argument('--disable-images')
-            chrome_options.add_argument('--disable-javascript')  # Más sigiloso
-            chrome_options.add_argument('--user-data-dir=/tmp/chrome-user-data')
+            chrome_options.add_argument('--disable-images')  # Mantener para velocidad
+            # ❌ NO DESHABILITAR JAVASCRIPT - Google lo necesita
+            
+            # ✅ PERFIL TEMPORAL ALEATORIO
+            import tempfile
+            temp_dir = tempfile.mkdtemp()
+            chrome_options.add_argument(f'--user-data-dir={temp_dir}')
+            
             chrome_options.add_argument('--disable-web-security')
             chrome_options.add_argument('--disable-features=VizDisplayCompositor')
             chrome_options.add_argument('--disable-ipc-flooding-protection')
-                        
-            chrome_options.add_argument(f'--user-agent={random.choice(realistic_user_agents)}')
             
-            # ✅ USAR ChromeDriver instalado en Dockerfile
+            # ✅ MÁS FLAGS ANTI-DETECCIÓN
+            chrome_options.add_argument('--disable-background-networking')
+            chrome_options.add_argument('--disable-background-timer-throttling')
+            chrome_options.add_argument('--disable-renderer-backgrounding')
+            chrome_options.add_argument('--disable-backgrounding-occluded-windows')
+            chrome_options.add_argument('--disable-client-side-phishing-detection')
+            chrome_options.add_argument('--disable-default-apps')
+            chrome_options.add_argument('--disable-hang-monitor')
+            chrome_options.add_argument('--disable-popup-blocking')
+            chrome_options.add_argument('--disable-prompt-on-repost')
+            chrome_options.add_argument('--disable-sync')
+            chrome_options.add_argument('--metrics-recording-only')
+            chrome_options.add_argument('--no-first-run')
+            chrome_options.add_argument('--safebrowsing-disable-auto-update')
+            chrome_options.add_argument('--enable-automation=false')
+            chrome_options.add_argument('--password-store=basic')
             
+            # ✅ USER AGENT DINÁMICO REALISTA
+            realistic_user_agent = self.get_random_realistic_user_agent()
+            chrome_options.add_argument(f'--user-agent={realistic_user_agent}')
+            
+            # ✅ PREFERENCIAS ANTI-DETECCIÓN
+            prefs = {
+                'profile.default_content_setting_values': {
+                    'notifications': 2,
+                    'media_stream': 2,
+                },
+                'profile.default_content_settings.popups': 0,
+                'profile.managed_default_content_settings.images': 2,  # Bloquear imágenes
+                'profile.content_settings.exceptions.automatic_downloads.*.setting': 1
+            }
+            chrome_options.add_experimental_option('prefs', prefs)
+            
+            # ✅ EXCLUIR SWITCHES SOSPECHOSOS
+            chrome_options.add_experimental_option("excludeSwitches", [
+                "enable-automation", 
+                "enable-logging",
+                "disable-background-networking"
+            ])
+            chrome_options.add_experimental_option('useAutomationExtension', False)
+            
+            # ✅ CREAR DRIVER
             chromedriver_path = os.environ.get('CHROMEDRIVER_PATH', '/usr/local/bin/chromedriver')
-            
-            
             service = Service(chromedriver_path)
             
             self.driver = webdriver.Chrome(service=service, options=chrome_options)
             
-            # Scripts anti-detección
-            self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-            self.driver.execute_cdp_cmd('Network.setUserAgentOverride', {
-                "userAgent": random.choice(realistic_user_agents)
-            })
-            self.driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
-                'source': '''
-                    Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-                    Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
-                    Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en', 'es']});
-                    window.chrome = {runtime: {}};
-                    Object.defineProperty(navigator, 'permissions', {get: () => ({query: () => Promise.resolve({state: 'granted'})})});
-                '''
-            })
+            # ✅ SCRIPTS ANTI-DETECCIÓN AVANZADOS
+            self.apply_stealth_scripts()
             
-            logger.info("✅ Driver Selenium configurado correctamente")
+            logger.info("✅ Selenium stealth driver configurado")
             
         except Exception as e:
             logger.info(f"❌ Error configurando driver: {e}")
             self.driver = None
+
+    
+    def get_random_realistic_user_agent(self):
+        """User agents ultra-realistas y actualizados"""
+        # ✅ USAR user-agents REALES de navegadores reales
+        real_user_agents = [
+            # Chrome Windows - más recientes
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36',
+            
+            # Chrome Mac
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+            
+            # Firefox Windows
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/120.0',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0',
+            
+            # Safari Mac  
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Safari/605.1.15'
+        ]
+        
+        return random.choice(real_user_agents)
+
+    def apply_stealth_scripts(self):
+        """Scripts JavaScript avanzados anti-detección"""
+        
+        # ✅ SCRIPT 1: Eliminar webdriver property
+        self.driver.execute_script("""
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => undefined,
+                configurable: true
+            });
+        """)
+        
+        # ✅ SCRIPT 2: Fingir propiedades del navegador
+        self.driver.execute_script("""
+            Object.defineProperty(navigator, 'plugins', {
+                get: () => [
+                    {name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer'},
+                    {name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai'},
+                    {name: 'Native Client', filename: 'internal-nacl-plugin'}
+                ]
+            });
+            
+            Object.defineProperty(navigator, 'languages', {
+                get: () => ['en-US', 'en', 'es']
+            });
+            
+            Object.defineProperty(navigator, 'permissions', {
+                get: () => ({
+                    query: () => Promise.resolve({state: 'granted'})
+                })
+            });
+            
+            window.chrome = {
+                runtime: {},
+                loadTimes: function() { return {}; },
+                csi: function() { return {}; }
+            };
+        """)
+        
+        # ✅ SCRIPT 3: Evadir detección de headless
+        self.driver.execute_script("""
+            Object.defineProperty(window, 'outerHeight', {
+                get: () => window.innerHeight
+            });
+            Object.defineProperty(window, 'outerWidth', {
+                get: () => window.innerWidth
+            });
+            
+            window.navigator.chrome = {
+                runtime: {},
+                loadTimes: function() { return {}; },
+                csi: function() { return {}; }
+            };
+            
+            // Fingir eventos de mouse
+            ['mousedown', 'mouseup', 'mousemove', 'mouseover', 'mouseout', 'mouseenter', 'mouseleave'].forEach(eventType => {
+                window.addEventListener(eventType, () => {}, true);
+            });
+        """)
+        
+        # ✅ USAR CDP PARA OVERRIDES MÁS PROFUNDOS
+        try:
+            # Override User Agent a nivel CDP
+            self.driver.execute_cdp_cmd('Network.setUserAgentOverride', {
+                "userAgent": self.get_random_realistic_user_agent(),
+                "acceptLanguage": "en-US,en;q=0.9,es;q=0.8",
+                "platform": "Windows"
+            })
+            
+            # Override geolocation si es necesario
+            self.driver.execute_cdp_cmd('Emulation.setGeolocationOverride', {
+                "latitude": 40.7128 + random.uniform(-0.1, 0.1),  # NYC área con variación
+                "longitude": -74.0060 + random.uniform(-0.1, 0.1),
+                "accuracy": 100
+            })
+            
+            # Fingir timezone
+            self.driver.execute_cdp_cmd('Emulation.setTimezoneOverride', {
+                "timezoneId": "America/New_York"
+            })
+            
+        except Exception as e:
+            logger.info(f"⚠️ CDP commands fallaron: {e}")
+
+    # ✅ AGREGAR COMPORTAMIENTO HUMANO EN EL MÉTODO SELENIUM
+    def simulate_human_behavior(self):
+        """Simular comportamiento humano realista"""
+        try:
+            # Scroll aleatorio
+            scroll_positions = [200, 400, 600, 800, 1000]
+            for pos in random.sample(scroll_positions, 2):
+                self.driver.execute_script(f"window.scrollTo(0, {pos});")
+                time.sleep(random.uniform(0.5, 1.5))
+            
+            # Movimiento de mouse simulado con JavaScript
+            self.driver.execute_script("""
+                const event = new MouseEvent('mousemove', {
+                    clientX: Math.random() * window.innerWidth,
+                    clientY: Math.random() * window.innerHeight
+                });
+                document.dispatchEvent(event);
+            """)
+            
+            # Pausa humana
+            time.sleep(random.uniform(2, 5))
+            
+        except Exception as e:
+            logger.info(f"⚠️ Error simulando comportamiento humano: {e}")
 
     def enforce_rate_limit(self, endpoint_key='default'):
         """Rate limiting agresivo para evitar bloqueos"""
@@ -145,23 +452,6 @@ class MultilingualSerpScraper:
             self._last_request_time[endpoint_key] = datetime.now()
             self._hourly_requests.append(datetime.now())
 
-    def get_serp_results(self, keyword, location='US', language=None, pages=1):
-        """Método principal con rate limiting y fallback inteligente"""
-        
-        # ✅ APLICAR RATE LIMITING
-        cache_key = f"serp:{keyword}:{location}:{language}:{pages}"
-        cached_result = self.cache.get(cache_key)
-        
-        if cached_result:
-            logger.info(f"📋 Cache hit para: {keyword}")
-            return cached_result
-        
-        logger.info(f"🔍 Nueva búsqueda para: '{keyword}' - Aplicando rate limiting...")
-        self.enforce_rate_limit(f"serp_{location}")
-        
-        # ✅ INTENTAR FALLBACK DIRECTO (más efectivo que Selenium)
-        logger.info(f"🚀 Usando método requests optimizado para: '{keyword}'")
-        return self.get_serp_results_optimized(keyword, location, language, pages)
 
     def get_serp_results_optimized(self, keyword, location='US', language=None, pages=1):
         """Método optimizado usando requests con máxima evasión"""
@@ -305,126 +595,6 @@ class MultilingualSerpScraper:
         
         return any(blocked_indicators)
     
-    def get_serp_results(self, keyword, location='US', language=None, pages=1):
-        """Método principal con rate limiting y fallback inteligente"""
-        
-        # ✅ APLICAR RATE LIMITING
-        cache_key = f"serp:{keyword}:{location}:{language}:{pages}"
-        cached_result = self.cache.get(cache_key)
-        
-        if cached_result:
-            logger.info(f"📋 Cache hit para: {keyword}")
-            return cached_result
-        
-        logger.info(f"🔍 Nueva búsqueda para: '{keyword}' - Aplicando rate limiting...")
-        self.enforce_rate_limit(f"serp_{location}")
-        
-        # ✅ INTENTAR FALLBACK DIRECTO (más efectivo que Selenium)
-        logger.info(f"🚀 Usando método requests optimizado para: '{keyword}'")
-        return self.get_serp_results_optimized(keyword, location, language, pages)
-
-    def get_serp_results_optimized(self, keyword, location='US', language=None, pages=1):
-        """Método optimizado usando requests con máxima evasión"""
-        
-        if not language:
-            language = self.language_detector.detect_language(keyword)
-        
-        country_config = self.country_configs.get(location, self.country_configs['US'])
-        
-        results = {
-            'keyword': keyword,
-            'language': language,
-            'location': location,
-            'google_domain': country_config['domain'],
-            'organic_results': [],
-            'featured_snippet': None,
-            'people_also_ask': [],
-            'related_searches': [],
-            'total_results': 0
-        }
-        
-        try:
-            # ✅ SESSION CON CONFIGURACIÓN AVANZADA
-            session = requests.Session()
-            
-            # ✅ HEADERS ULTRA-REALISTAS CON ROTACI N
-            headers = self.get_realistic_headers(country_config)
-            session.headers.update(headers)
-            
-            # ✅ COOKIES INICIALES (simular visita previa)
-            session.get(f"https://{country_config['domain']}", timeout=10)
-            time.sleep(random.uniform(2, 4))
-            
-            for page in range(pages):
-                if page > 0:
-                    # Delay extra largo entre páginas
-                    delay = random.uniform(20, 35)
-                    logger.info(f"⏳ Delay entre páginas: {delay:.1f} segundos...")
-                    time.sleep(delay)
-                
-                # ✅ URL SIMPLE Y NATURAL
-                encoded_keyword = quote_plus(keyword)
-                url = f"https://{country_config['domain']}/search"
-                
-                params = {
-                    'q': keyword,  # Sin encoding en params
-                    'num': 10,
-                    'hl': country_config['hl'],
-                    'gl': country_config['gl']
-                }
-                
-                if page > 0:
-                    params['start'] = page * 10
-                
-                logger.info(f"📄 Página {page + 1}: {url} - Params: {params}")
-                
-                # ✅ DELAY ALEATORIO ANTES DE REQUEST
-                pre_delay = random.uniform(8, 15)
-                logger.info(f"⏳ Pre-request delay: {pre_delay:.1f} segundos...")
-                time.sleep(pre_delay)
-                
-                # ✅ HACER REQUEST CON TIMEOUT LARGO
-                try:
-                    response = session.get(url, params=params, timeout=25)
-                    
-                    if response.status_code != 200:
-                        logger.info(f"❌ HTTP {response.status_code}: {response.reason}")
-                        continue
-                    
-                    # ✅ VERIFICAR BLOQUEOS
-                    if self.is_blocked(response):
-                        logger.info("🚫 Google bloqueó el request - Deteniendo scraping")
-                        break
-                    
-                    # ✅ PARSEAR RESULTADOS
-                    soup = BeautifulSoup(response.content, 'html.parser')
-                    page_results = self.extract_organic_results_advanced(soup)
-                    results['organic_results'].extend(page_results)
-                    
-                    logger.info(f"✅ Página {page + 1}: {len(page_results)} resultados extraídos")
-                    
-                    # ✅ EXTRAER ELEMENTOS ADICIONALES (solo primera página)
-                    if page == 0:
-                        results['featured_snippet'] = self.extract_featured_snippet_bs4(soup)
-                        results['people_also_ask'] = self.extract_people_also_ask_bs4(soup)
-                        results['related_searches'] = self.extract_related_searches_bs4(soup)
-                    
-                except requests.RequestException as e:
-                    logger.info(f"❌ Error en request: {e}")
-                    continue
-            
-            results['total_results'] = len(results['organic_results'])
-            
-            # ✅ CACHE AGRESIVO PARA REDUCIR REQUESTS
-            cache_duration = 7200 if results['total_results'] > 0 else 1800  # 2h si hay resultados, 30min si no
-            self.cache.set(f"serp:{keyword}:{location}:{language}:{pages}", results, cache_duration)
-            
-            logger.info(f"🎯 TOTAL FINAL: {results['total_results']} resultados para '{keyword}'")
-            return results
-            
-        except Exception as e:
-            logger.info(f"❌ Error general: {e}")
-            return results
 
     def get_realistic_headers(self, country_config):
         """Headers realistas con rotación"""
@@ -989,22 +1159,27 @@ class MultilingualSerpScraper:
     def get_serp_results(self, keyword, location='US', language=None, pages=1):
         """Método principal con fallbacks en cascada"""
         
-        # 1. Verificar cache primero
+        # 1. Cache
         cache_key = f"serp:{keyword}:{location}:{language}:{pages}"
         cached_result = self.cache.get(cache_key)
-        
         if cached_result:
-            logger.info(f"📋 Cache hit para: {keyword}")
             return cached_result
         
-        logger.info(f"🔍 Nueva búsqueda para: '{keyword}' en {location}")
+        # 2. ✅ SELENIUM (más efectivo que requests)  
+        logger.info("🔄 Fallback a Selenium...")
+        selenium_results = self.get_serp_results_selenium(keyword, location, language, pages)
+        if selenium_results and selenium_results['total_results'] > 0:
+            logger.info(f"✅ Selenium exitoso: {selenium_results['total_results']} resultados")
+            return selenium_results
         
-        # 2. Intentar método optimizado (requests)
+        # 3. Requests optimizado (rápido)
+        logger.info("🚀 Método 2: Requests optimizado...")
         results = self.get_serp_results_optimized(keyword, location, language, pages)
-        
         if results and results['total_results'] > 0:
-            logger.info(f"✅ Método optimizado exitoso: {results['total_results']} resultados")
+            logger.info(f"✅ Requests exitoso: {results['total_results']} resultados")
             return results
+        
+
         
         # 3. Fallback a Google Custom Search API
         logger.info("🔄 Fallback a Google API...")
@@ -1028,6 +1203,172 @@ class MultilingualSerpScraper:
             'total_results': 0,
             'source': 'empty_fallback'
         }
+    
+    def get_serp_results_selenium(self, keyword, location='US', language=None, pages=1):
+        """Método Selenium usando tus métodos existentes"""
+        
+        if not language:
+            language = self.language_detector.detect_language(keyword)
+        
+        country_config = self.country_configs.get(location, self.country_configs['US'])
+        
+        results = {
+            'keyword': keyword,
+            'language': language,
+            'location': location,
+            'google_domain': country_config['domain'],
+            'organic_results': [],
+            'featured_snippet': None,
+            'people_also_ask': [],
+            'related_searches': [],
+            'total_results': 0,
+            'source': 'selenium'
+        }
+        
+        try:
+            logger.info(f"🤖 Selenium: Iniciando para '{keyword}' en {location}")
+            
+            # 1. ✅ CONFIGURAR DRIVER (tu método existente)
+            self.setup_driver()
+            if not self.driver:
+                logger.info("❌ No se pudo configurar Selenium driver")
+                return None
+            
+            # 2. ✅ APLICAR RATE LIMITING
+            self.enforce_rate_limit(f"selenium_{location}")
+            
+            for page in range(pages):
+                try:
+                    if page > 0:
+                        delay = random.uniform(15, 25)
+                        logger.info(f"⏳ Selenium delay entre páginas: {delay:.1f}s")
+                        time.sleep(delay)
+                    
+                    # 3. ✅ NAVEGAR A GOOGLE
+                    url = f"https://{country_config['domain']}/search"
+                    params = {
+                        'q': keyword,
+                        'num': 10,
+                        'hl': country_config['hl'],
+                        'gl': country_config['gl']
+                    }
+                    
+                    if page > 0:
+                        params['start'] = page * 10
+                    
+                    # Construir URL completa
+                    from urllib.parse import urlencode
+                    full_url = f"{url}?{urlencode(params)}"
+                    
+                    logger.info(f"🌐 Selenium navegando a: {full_url}")
+                    
+                    self.driver.get(full_url)
+                    
+                    # 4. ✅ ESPERAR A QUE CARGUE
+                    from selenium.webdriver.support.ui import WebDriverWait
+                    from selenium.webdriver.support import expected_conditions as EC
+                    from selenium.webdriver.common.by import By
+                    from selenium.common.exceptions import TimeoutException
+                    
+                    try:
+                        # Esperar a que aparezcan resultados
+                        WebDriverWait(self.driver, 15).until(
+                            EC.presence_of_element_located((By.CSS_SELECTOR, "div.g, div.MjjYud, div.yuRUbf"))
+                        )
+                        logger.info("✅ Selenium: Página cargada")
+                    except TimeoutException:
+                        logger.info("⚠️ Selenium: Timeout esperando resultados")
+                        continue
+
+                    self.simulate_human_behavior()
+                    
+                    # 5. ✅ VERIFICAR SI GOOGLE NOS BLOQUEÓ
+                    if self.is_blocked_selenium():
+                        logger.info("🚫 Selenium: Google detectó bot - abortando")
+                        break
+                    
+                    # 6. ✅ EXTRAER RESULTADOS (tu método existente)
+                    page_results = self.extract_organic_results()
+                    
+                    # Aplicar filtro de dominios de alta autoridad
+                    filtered_results = self.filter_realistic_competitors(page_results)
+                    results['organic_results'].extend(filtered_results)
+                    
+                    logger.info(f"✅ Selenium página {page + 1}: {len(filtered_results)} resultados extraídos")
+                    
+                    # 7. ✅ ELEMENTOS ADICIONALES (solo primera página)
+                    if page == 0:
+                        try:
+                            results['featured_snippet'] = self.extract_featured_snippet()
+                            results['people_also_ask'] = self.extract_people_also_ask()
+                            results['related_searches'] = self.extract_related_searches()
+                            logger.info("✅ Selenium: Elementos adicionales extraídos")
+                        except Exception as e:
+                            logger.info(f"⚠️ Selenium: Error en elementos adicionales: {e}")
+                    
+                    # 8. ✅ SCROLL ALEATORIO (parecer más humano)
+                    try:
+                        self.driver.execute_script("window.scrollTo(0, Math.floor(Math.random() * 1000));")
+                        time.sleep(random.uniform(1, 3))
+                    except:
+                        pass
+                    
+                except Exception as e:
+                    logger.info(f"❌ Selenium error en página {page + 1}: {e}")
+                    continue
+            
+            results['total_results'] = len(results['organic_results'])
+            
+            # 9. ✅ CACHE SI HAY RESULTADOS
+            if results['total_results'] > 0:
+                cache_key = f"serp_selenium:{keyword}:{location}:{language}:{pages}"
+                self.cache.set(cache_key, results, 3600)  # 1 hora
+            
+            logger.info(f"🎯 Selenium TOTAL: {results['total_results']} resultados")
+            return results
+            
+        except Exception as e:
+            logger.info(f"❌ Selenium error general: {e}")
+            return None
+            
+        finally:
+            # 10. ✅ NO CERRAR DRIVER (reutilizar para siguiente request)
+            # Solo cerrar si hay muchos errores
+            if hasattr(self, '_selenium_errors'):
+                self._selenium_errors += 1
+                if self._selenium_errors >= 3:
+                    logger.info("🔄 Selenium: Demasiados errores, reiniciando driver")
+                    self.close_driver()
+                    self._selenium_errors = 0
+            else:
+                self._selenium_errors = 0
+
+    def is_blocked_selenium(self):
+        """Verificar si Google bloqueó Selenium"""
+        try:
+            # Verificar URL
+            current_url = self.driver.current_url.lower()
+            if ('sorry' in current_url or 
+                'captcha' in current_url or 
+                'blocked' in current_url):
+                return True
+            
+            # Verificar contenido de la página
+            page_source = self.driver.page_source.lower()
+            blocked_indicators = [
+                'unusual traffic',
+                'captcha',
+                'blocked',
+                'please enable javascript',
+                'detected unusual',
+                'verify you are human'
+            ]
+            
+            return any(indicator in page_source for indicator in blocked_indicators)
+            
+        except Exception:
+            return False
+
     def close_driver(self):
         """Cerrar driver para reiniciar"""
         if self.driver:
