@@ -378,6 +378,8 @@ def analyze_competitors():
                 'keywords_analyzed': len(term_analysis.get('keywords', [])),
                 'competitors_analyzed': content_analysis.get('competitors_analyzed', 0),
                 'keyword_recommendations': term_analysis.get('keywords', []),
+                'semantic_terms': term_analysis.get('semantic_terms', []),  # NUEVO
+                'ngrams': term_analysis.get('ngrams', []),  # NUEVO
                 'content_gap': {
                     'word_difference': my_word_count - competitor_avg_words,
                     'status': 'longer' if my_word_count > competitor_avg_words else 'shorter',
