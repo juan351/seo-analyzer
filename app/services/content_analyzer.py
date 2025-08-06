@@ -1913,7 +1913,7 @@ class MultilingualContentAnalyzer:
             term_analysis = {}
             if competitors_with_content:
                 try:
-                    term_analysis = self.analyze_terms_from_real_competitors_simple(
+                    term_analysis = self.analyze_terms_from_real_competitors(
                         my_content, keywords, competitors_with_content, language
                     )
                     logger.info("✅ Análisis de términos completado")
