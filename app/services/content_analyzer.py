@@ -160,21 +160,16 @@ class MultilingualContentAnalyzer:
             return ['contenido', 'información']
 
     def get_stop_words(self, language):
-        """Stop words básicas por idioma - EXPANDIDO"""
+        """Stop words exhaustivas por idioma usando NLTK"""
         stop_words = {
-            'es': {'el', 'la', 'de', 'que', 'y', 'a', 'en', 'un', 'es', 'se', 'no', 'te', 'lo', 'le', 'da', 'su', 'por', 'son', 'con', 'para', 'al', 'del', 'los', 'las', 'una', 'como', 'pero', 'sus', 'han', 'muy', 'más', 'me', 'mi', 'este', 'esta', 'estos', 'estas'},
-            
-            'en': {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'are', 'was', 'were', 'be', 'been', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'can', 'this', 'that', 'these', 'those'},
-            
-            # NUEVOS IDIOMAS
-            'fr': {'le', 'de', 'et', 'à', 'un', 'il', 'être', 'et', 'en', 'avoir', 'que', 'pour', 'dans', 'ce', 'son', 'une', 'sur', 'avec', 'ne', 'se', 'pas', 'tout', 'plus', 'par', 'grand', 'en', 'me', 'même', 'elle', 'aux', 'du', 'te', 'vous', 'leur', 'nous'},
-            
-            'de': {'der', 'die', 'und', 'in', 'den', 'von', 'zu', 'das', 'mit', 'sich', 'des', 'auf', 'für', 'ist', 'im', 'dem', 'nicht', 'ein', 'eine', 'als', 'auch', 'es', 'an', 'werden', 'aus', 'er', 'hat', 'dass', 'sie', 'nach', 'wird', 'bei', 'noch', 'kann', 'um', 'zum', 'durch', 'wenn', 'nur', 'war', 'aber', 'oder', 'über'},
-            
-            'pt': {'o', 'a', 'de', 'e', 'do', 'da', 'em', 'um', 'para', 'é', 'com', 'não', 'uma', 'os', 'no', 'se', 'na', 'por', 'mais', 'as', 'dos', 'como', 'mas', 'foi', 'ao', 'ele', 'das', 'tem', 'à', 'seu', 'sua', 'ou', 'ser', 'quando', 'muito', 'há', 'nos', 'já', 'está', 'eu', 'também', 'só', 'pelo', 'pela', 'até', 'isso', 'ela', 'entre', 'era', 'depois', 'sem', 'mesmo'},
-            
-            'it': {'il', 'di', 'e', 'la', 'a', 'che', 'un', 'in', 'è', 'per', 'da', 'non', 'con', 'si', 'le', 'lo', 'su', 'come', 'del', 'ma', 'al', 'una', 'sono', 'nel', 'dalla', 'della', 'questo', 'alla', 'gli', 'più', 'anche', 'dei', 'delle', 'ha', 'lui', 'lei', 'tutto', 'quando', 'molto', 'dove', 'prima', 'dopo', 'senza', 'tra', 'contro'}
+            'es': set(nltk.corpus.stopwords.words('spanish')),
+            'en': set(nltk.corpus.stopwords.words('english')),
+            'fr': set(nltk.corpus.stopwords.words('french')),
+            'de': set(nltk.corpus.stopwords.words('german')),
+            'pt': set(nltk.corpus.stopwords.words('portuguese')),
+            'it': set(nltk.corpus.stopwords.words('italian'))
         }
+        # Si el idioma no está soportado, usa inglés por defecto
         return stop_words.get(language, stop_words['en'])
 
     def auto_competitive_analysis(self, keywords, my_content, language):
