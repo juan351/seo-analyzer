@@ -1082,12 +1082,7 @@ class MultilingualContentAnalyzer:
             final_terms.update(low_terms)
         
         return final_terms
-
-    def extract_important_ngrams(self, content, language, target_keywords):
-        """AUMENTAR cantidad de n-gramas también"""
-        
-        # Tu código actual pero cambiar:
-        return dict(sorted(coherent_ngrams.items(), key=lambda x: x[1], reverse=True)[:12])  
+    
 
     def _extract_terms_universal_algorithm(self, content, language, target_keywords, max_terms):
         """NIVEL 1: Algoritmo universal mejorado (reemplaza _extract_terms_technical_algorithm)"""
@@ -2123,37 +2118,7 @@ class MultilingualContentAnalyzer:
         
         return semantic_terms
 
-    def extract_important_ngrams(self, content, language, target_keywords, n_values=[2, 3]):
-        """Extraer n-gramas importantes (frases de 2-3 palabras)"""
-        from collections import defaultdict, Counter
-        
-        clean_content = self.clean_content_for_analysis(content)
-        words = clean_content.split()
-        
-        ngrams = defaultdict(int)
-        stop_words = self.get_stop_words(language)
-        
-        for n in n_values:
-            for i in range(len(words) - n + 1):
-                ngram_words = words[i:i+n]
-                
-                # Filtrar n-gramas que contengan stop words o sean muy cortos
-                if any(len(word) < 3 for word in ngram_words):
-                    continue
-                if any(word in stop_words for word in ngram_words):
-                    continue
-                
-                ngram = ' '.join(ngram_words)
-                ngrams[ngram] += 1
-        
-        # Filtrar y devolver solo los más frecuentes
-        important_ngrams = {
-            ngram: count for ngram, count in ngrams.items()
-            if count >= 2
-        }
-        
-        return dict(Counter(important_ngrams).most_common(8))
-
+   
     def count_term_in_content(self, content, term, language):
         """Contar ocurrencias de un término específico"""
         clean_content = self.clean_content_for_analysis(content)
@@ -2240,6 +2205,9 @@ class MultilingualContentAnalyzer:
                 title = result.get('title', '')
                 position = result.get('position', i + 1)
                 
+                logger.info(f"🔍 Competidor: {url}")
+                logger.info(f"🔍 Posición Google: {position}")
+
                 if not url or my_domain in url:
                     continue
                 
@@ -2274,6 +2242,7 @@ class MultilingualContentAnalyzer:
                             
                             # Estimación de SEO Score basado en posición y métricas
                             seo_score = max(60, 95 - (position * 3))  # Posición 1=92, 2=89, etc.
+                            logger.info(f"🔍 SEO Score calculado: {seo_score}")
                             if word_count < 300:
                                 seo_score -= 10
                             elif word_count > 2000:
@@ -2285,6 +2254,8 @@ class MultilingualContentAnalyzer:
                                 'title': title,
                                 'domain': domain
                             })
+
+                            logger.info(f"SEO agregado a competitors_real_data: {min(95, max(60, seo_score))}")
                             
                             # NUEVO: Guardar datos reales calculados
                             competitors_real_data.append({
@@ -2755,33 +2726,7 @@ class MultilingualContentAnalyzer:
         
         return not (needs_before or needs_after)
 
-    def extract_important_ngrams(self, content, language, target_keywords):
-        """MEJORAR función existente con validación inteligente"""
-        clean_content = re.sub(r'[^\w\s]', ' ', content.lower())
-        words = clean_content.split()
-        
-        ngrams = defaultdict(int)
-        stop_words = self.get_stop_words(language)
-        technical_stops = self._get_additional_stop_words(language)
-        all_stops = stop_words.union(technical_stops)
-        
-        for n in [2, 3]:
-            for i in range(len(words) - n + 1):
-                ngram_words = words[i:i+n]
-                
-                # MEJORAR validación (reemplazar lógica actual)
-                if self._is_valid_ngram_smart(ngram_words, all_stops):
-                    ngram = ' '.join(ngram_words)
-                    ngrams[ngram] += 1
-        
-        # Mantener el formato de salida actual
-        important_ngrams = {
-            ngram: count for ngram, count in ngrams.items()
-            if count >= 2
-        }
-        
-        return dict(Counter(important_ngrams).most_common(8))
-
+   
     def _is_valid_ngram_smart(self, words, stop_words):
         """Validación mejorada de n-gramas"""
         # Longitud mínima
