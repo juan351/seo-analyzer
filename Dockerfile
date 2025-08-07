@@ -68,8 +68,7 @@ RUN python -c "import nltk; \
     nltk.download('stopwords'); \
     nltk.download('wordnet');"
 
-# Opción más limpia - deja que sentence-transformers maneje el cache automáticamente
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('paraphrase-multilingual-MiniLM-L6-v2')"
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('paraphrase-multilingual-mpnet-base-v2')"
 # Variables de entorno para Chrome
 ENV DISPLAY=:99
 ENV CHROME_BIN=/usr/bin/google-chrome-stable
