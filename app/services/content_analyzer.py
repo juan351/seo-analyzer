@@ -2392,7 +2392,10 @@ class MultilingualContentAnalyzer:
             all_competitor_text = " ".join([comp['content'] for comp in competitors_content])
             
             # ESTRATEGIA HÍBRIDA (las funciones mejoradas automáticamente usarán los 3 niveles)
-            semantic_terms = self.extract_semantic_terms(all_competitor_text, language, keywords, max_terms=15)
+            logger.info("🔍 Llamando extract_semantic_terms...")
+            semantic_terms = self.extract_semantic_terms(all_competitor_text, language, keywords, max_terms=25)
+            logger.info(f"🔍 Términos extraídos: {len(semantic_terms)}")
+            logger.info(f"🔍 Términos: {list(semantic_terms.keys())[:10]}")
             important_ngrams = self.extract_important_ngrams(all_competitor_text, language, keywords)
             
             # Mantener análisis de keywords actual
@@ -2559,14 +2562,17 @@ class MultilingualContentAnalyzer:
         
         # 1. FILTRAR PALABRAS DEMASIADO ABSTRACTAS (universal)
         if self._is_too_abstract_universal(term, language):
+            logger.info(f"🚫 Filtrado por abstracto: {term}")
             return False
         
         # 2. VERIFICAR QUE TENGA FUNCIÓN SEMÁNTICA (no solo gramatical)
         if not self._has_semantic_function(term, contexts, language):
+            logger.info(f"🚫 Filtrado por falta función semántica: {term}")
             return False
         
         # 3. DEBE APARECER EN CONTEXTOS INFORMATIVOS (no solo conectivos)
         if not self._appears_in_informative_contexts(term, contexts):
+            logger.info(f"🚫 Filtrado por contextos no informativos: {term}")
             return False
         
         return True

@@ -308,6 +308,8 @@ def analyze_competitors():
                     'url': real_data['url'],
                     'title': real_data['title'],
                     'position': real_data['position'],
+                    'avg_position': real_data['avg_position'],
+                    'keywords_ranking': keywords,
                     'word_count': real_data['word_count'],  # ✅ REAL
                     'seo_score': real_data['seo_score'],  # ✅ REAL  
                     'keyword_density': real_data['keyword_density']  # ✅ REAL
