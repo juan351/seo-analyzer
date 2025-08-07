@@ -71,9 +71,8 @@ RUN python -c "import nltk; \
 # Descargar usando huggingface_hub directamente (más estable)
 RUN python -c "import os; \
     from huggingface_hub import snapshot_download; \
-    os.makedirs('/home/appuser/.cache/torch/sentence_transformers/sentence-transformers_paraphrase-multilingual-MiniLM-L12-v2', exist_ok=True); \
-    snapshot_download(repo_id='sentence-transformers/paraphrase-multilingual-MiniLM-L6-v2', cache_dir='/home/appuser/.cache/torch/sentence_transformers/sentence-transformers_paraphrase-multilingual-MiniLM-L12-v2');"
-
+    os.makedirs('/home/appuser/.cache/torch/sentence_transformers/sentence-transformers_paraphrase-multilingual-MiniLM-L6-v2', exist_ok=True); \
+    snapshot_download(repo_id='sentence-transformers/paraphrase-multilingual-MiniLM-L6-v2', cache_dir='/home/appuser/.cache/torch/sentence_transformers/sentence-transformers_paraphrase-multilingual-MiniLM-L6-v2');"
 # Variables de entorno para Chrome
 ENV DISPLAY=:99
 ENV CHROME_BIN=/usr/bin/google-chrome-stable
