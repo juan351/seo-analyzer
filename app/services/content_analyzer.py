@@ -2713,6 +2713,23 @@ class MultilingualContentAnalyzer:
         
         return min(completeness_score / len(phrase_contexts), 1.0)
 
+    def _extract_term_contexts_detailed(self, content, term, window=15):
+        """Extraer contextos específicos y detallados"""
+        words = content.lower().split()
+        contexts = []
+        
+        for i, word in enumerate(words):
+            if term.lower() == word.lower():  # Coincidencia exacta
+                start = max(0, i - window)
+                end = min(len(words), i + window)
+                context = " ".join(words[start:end])
+                
+                # Solo contextos con suficiente contenido
+                if len(context.split()) >= 8:
+                    contexts.append(context)
+        
+        return contexts[:5]  # Máximo 5 contextos
+
     def _can_stand_alone_semantically(self, phrase, words_before, words_after):
         """¿Puede la frase funcionar como unidad semántica independiente?"""
         

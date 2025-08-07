@@ -281,6 +281,9 @@ def analyze_competitors():
         term_analysis = analysis.get('term_frequency_analysis', {})
         content_analysis = term_analysis.get('content_analysis', {})
         competitors_real_data = analysis.get('competitors_real_data', [])  # NUEVO
+
+        logger.info(f"🔍 DEBUG: competitors_real_data = {competitors_real_data}")
+        logger.info(f"🔍 DEBUG: unique_competitors = {unique_competitors}")
         
         # Construir lista de competidores con DATOS REALES
         wp_competitors = []
@@ -288,13 +291,16 @@ def analyze_competitors():
         
         for i, comp in enumerate(unique_competitors):
             # Buscar datos reales para este competidor
+            logger.info(f"🔍 Buscando datos para dominio: '{comp['domain']}'")
             real_data = None
             for real_comp in competitors_real_data:
                 if real_comp['domain'] == comp['domain']:
                     real_data = real_comp
+                    logger.info(f"✅ MATCH encontrado para {comp['domain']}")
                     break
             
             if real_data:
+                logger.info(f"✅ Usando datos reales: seo_score={real_data['seo_score']}")
                 # USAR DATOS REALES
                 wp_competitors.append({
                     'domain': real_data['domain'],
@@ -307,6 +313,7 @@ def analyze_competitors():
                 })
                 logger.info(f"✅ Usando datos reales para {real_data['domain']}: {real_data['word_count']} palabras")
             else:
+                logger.info(f"❌ No se encontraron datos reales para {comp['domain']}")
                 # FALLBACK: Estimaciones mejoradas
                 estimated_word_count = content_analysis.get('competitor_avg_words', 1000)
                 estimated_position = comp.get('avg_position', i + 1)
