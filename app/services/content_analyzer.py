@@ -44,7 +44,7 @@ class MultilingualContentAnalyzer:
         
         try:
             from sentence_transformers import SentenceTransformer
-            self.sentence_model = SentenceTransformer('all-MiniLM-L6-v2')
+            self.sentence_model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
             self.semantic_model_available = True
             logger.info("✅ Sentence Transformers disponible")
         except ImportError:

@@ -36,11 +36,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN python -m spacy download en_core_web_sm \
     && python -m spacy download es_core_news_sm
 
-# Descargar datos de nltk
-RUN python -c "import nltk; \
-    nltk.download('punkt'); \
-    nltk.download('stopwords'); \
-    nltk.download('wordnet');"
+
 
 # Crear directorios para Chrome con permisos correctos
 RUN mkdir -p /tmp/chrome-user-data \
@@ -65,6 +61,14 @@ RUN chmod 755 /opt/google/chrome/chrome \
     && chmod 755 /usr/bin/google-chrome*
 
 USER appuser
+
+# Descargar datos de nltk
+RUN python -c "import nltk; \
+    nltk.download('punkt'); \
+    nltk.download('stopwords'); \
+    nltk.download('wordnet');"
+
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')"
 
 # Variables de entorno para Chrome
 ENV DISPLAY=:99
