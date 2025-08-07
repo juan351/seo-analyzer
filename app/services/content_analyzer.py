@@ -1246,6 +1246,9 @@ class MultilingualContentAnalyzer:
                         
             # Ordenar por frecuencia enhanced
             sorted_enhanced = sorted(enhanced_terms.items(), key=lambda x: x[1], reverse=True)
+
+            import gc
+            gc.collect()
             return dict(sorted_enhanced[:15])
             
         except Exception as e:
