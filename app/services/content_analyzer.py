@@ -1412,33 +1412,33 @@ class MultilingualContentAnalyzer:
         return dict(sorted(coherent_ngrams.items(), key=lambda x: x[1], reverse=True)[:8])
     
     def _is_coherent_phrase(self, words, stop_words, target_keywords, language):
-    """Verificar coherencia semántica con bonus para frases más largas"""
-    
-    # 1. Filtros básicos (mantener)
-    connective_stops = {
-        'es': {'del', 'de', 'la', 'el', 'los', 'las', 'por', 'para', 'con', 'sin', 'que', 'como', 'una', 'uno'},
-        'en': {'the', 'of', 'in', 'on', 'at', 'by', 'for', 'with', 'to', 'from', 'that', 'which', 'a', 'an'}
-    }
-    
-    conn_stops = connective_stops.get(language, connective_stops['en'])
-    
-    # Más flexible con frases largas: solo verificar que no EMPIECEN mal
-    if words[0] in conn_stops:
-        return False
-    
-    # 2. Para frases de 3+ palabras, ser más permisivo
-    if len(words) >= 3:
-        # Al menos 60% palabras sustantivas
-        substantial_words = sum(1 for word in words if len(word) > 4 and word not in stop_words)
-        substantial_ratio = substantial_words / len(words)
+        """Verificar coherencia semántica con bonus para frases más largas"""
         
-        return substantial_ratio >= 0.5  # Más permisivo para frases largas
-    
-    else:  # Bigramas: ser más estricto
-        substantial_words = sum(1 for word in words if len(word) > 4 and word not in stop_words)
-        substantial_ratio = substantial_words / len(words)
+        # 1. Filtros básicos (mantener)
+        connective_stops = {
+            'es': {'del', 'de', 'la', 'el', 'los', 'las', 'por', 'para', 'con', 'sin', 'que', 'como', 'una', 'uno'},
+            'en': {'the', 'of', 'in', 'on', 'at', 'by', 'for', 'with', 'to', 'from', 'that', 'which', 'a', 'an'}
+        }
         
-        return substantial_ratio >= 0.8  # Más estricto para bigramas
+        conn_stops = connective_stops.get(language, connective_stops['en'])
+        
+        # Más flexible con frases largas: solo verificar que no EMPIECEN mal
+        if words[0] in conn_stops:
+            return False
+        
+        # 2. Para frases de 3+ palabras, ser más permisivo
+        if len(words) >= 3:
+            # Al menos 60% palabras sustantivas
+            substantial_words = sum(1 for word in words if len(word) > 4 and word not in stop_words)
+            substantial_ratio = substantial_words / len(words)
+            
+            return substantial_ratio >= 0.5  # Más permisivo para frases largas
+        
+        else:  # Bigramas: ser más estricto
+            substantial_words = sum(1 for word in words if len(word) > 4 and word not in stop_words)
+            substantial_ratio = substantial_words / len(words)
+            
+            return substantial_ratio >= 0.8  # Más estricto para bigramas
 
     def _calculate_phrase_coherence(self, phrase, full_content, target_keywords, language):
         """Calcular coherencia con bonus para frases más largas"""
