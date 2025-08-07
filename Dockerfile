@@ -68,7 +68,7 @@ RUN python -c "import nltk; \
     nltk.download('stopwords'); \
     nltk.download('wordnet');"
 
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')"
+
 
 # Variables de entorno para Chrome
 ENV DISPLAY=:99
