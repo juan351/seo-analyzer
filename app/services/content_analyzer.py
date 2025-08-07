@@ -36,6 +36,24 @@ class MultilingualContentAnalyzer:
             'Accept-Encoding': 'gzip, deflate',
             'Connection': 'keep-alive',
         }
+
+        # AGREGAR: Inicialización de capacidades IA
+        self.semantic_model_available = False
+        self.sentence_model = None
+        self.openai_available = False
+        
+        try:
+            from sentence_transformers import SentenceTransformer
+            self.sentence_model = SentenceTransformer('all-MiniLM-L6-v2')
+            self.semantic_model_available = True
+            logger.info("✅ Sentence Transformers disponible")
+        except ImportError:
+            logger.info("ℹ️ Sentence Transformers no disponible")
+        
+        # Preparar OpenAI si está configurado
+        if hasattr(self, 'openai_client') and self.openai_client:
+            self.openai_available = True
+            logger.info("✅ OpenAI disponible")
         
     def load_models(self):
         """Cargar modelos disponibles"""
@@ -1007,29 +1025,306 @@ class MultilingualContentAnalyzer:
         }
 
     def extract_semantic_terms(self, content, language, target_keywords, max_terms=10):
-        """Extraer términos semánticamente relacionados"""
-        clean_content = self.clean_content_for_analysis(content)
+        """ESTRATEGIA HÍBRIDA: Algoritmo base + Sentence Transformers + OpenAI preparado"""
+        
+        # NIVEL 1: Algoritmo técnico completo
+        base_terms = self._extract_terms_technical_algorithm(content, language, target_keywords, max_terms)
+        
+        # NIVEL 2: Enhancement con Sentence Transformers (si disponible)
+        if self.semantic_model_available and len(base_terms) > 0:
+            enhanced_terms = self._enhance_with_sentence_transformers(
+                base_terms, content, language, target_keywords
+            )
+            logger.info(f"🤖 Sentence Transformers mejoró {len(enhanced_terms)} términos")
+        else:
+            enhanced_terms = base_terms
+        
+        # NIVEL 3: Preparado para OpenAI (futuro)
+        if self.openai_available and hasattr(self, 'use_openai_enhancement'):
+            try:
+                final_terms = self._enhance_with_openai(enhanced_terms, content, target_keywords)
+                logger.info("🚀 OpenAI enhancement aplicado")
+                return final_terms
+            except Exception as e:
+                logger.info(f"ℹ️ OpenAI falló, usando Transformers: {e}")
+        
+        return enhanced_terms
+    
+    def _extract_terms_technical_algorithm(self, content, language, target_keywords, max_terms):
+        """NIVEL 1: Tu algoritmo técnico completo"""
+        clean_content = re.sub(r'[^\w\s]', ' ', content.lower())
         words = clean_content.split()
         
-        # Filtrar stop words
+        # Stop words expandidas (tu lista completa)
         stop_words = self.get_stop_words(language)
+        technical_stops = self._get_comprehensive_technical_stops(language)
+        all_stop_words = stop_words.union(technical_stops)
         
-        # Contar palabras significativas
+        # TU ALGORITMO: Filtrado técnico inteligente
         significant_words = [
             word for word in words 
-            if len(word) > 3 and word not in stop_words
-            and not any(keyword.lower() in word.lower() for keyword in target_keywords)
+            if self._is_technically_valid_term_complete(word, target_keywords, language, all_stop_words)
         ]
         
         word_freq = Counter(significant_words)
         
-        # Filtrar palabras que aparecen al menos 2 veces
-        semantic_terms = {
-            word: count for word, count in word_freq.most_common(max_terms)
-            if count >= 2
-        }
+        # TU ALGORITMO: Calidad técnica completa
+        quality_terms = {}
+        for word, count in word_freq.most_common(max_terms * 3):
+            if count >= 2:
+                quality_score = self._calculate_technical_quality_complete(word, content, language)
+                if quality_score > 0.4:
+                    quality_terms[word] = count
         
-        return semantic_terms
+        return dict(sorted(quality_terms.items(), key=lambda x: x[1], reverse=True)[:max_terms])
+
+    def _is_technically_valid_term_complete(self, word, exclude_keywords, language, stop_words):
+        """TU ALGORITMO COMPLETO de validación técnica"""
+        
+        # Longitud válida
+        if len(word) < 4 or len(word) > 20:
+            return False
+        
+        # No es número puro
+        if word.isdigit():
+            return False
+        
+        # No es keyword principal
+        if any(kw.lower() in word.lower() for kw in exclude_keywords):
+            return False
+        
+        # Stop words técnicas
+        if word in stop_words:
+            return False
+        
+        # Patrones problemáticos (TU LISTA COMPLETA)
+        problematic_patterns = [
+            r'\d{3,}',        # 3+ dígitos consecutivos
+            r'www\.',         # URLs
+            r'http',          # Enlaces
+            r'@',             # Emails/mentions
+            r'\.com|\.org',   # Dominios
+            r'^[a-z]{1,2}$',  # Letras sueltas (a, de, el, etc.)
+        ]
+        
+        if any(re.search(pattern, word) for pattern in problematic_patterns):
+            return False
+        
+        return True
+
+    def _get_comprehensive_technical_stops(self, language):
+        """TU LISTA COMPLETA de stop words técnicas"""
+        technical_stops = {
+            'es': {
+                # Meta-términos web/referencias
+                'artículo', 'página', 'sitio', 'website', 'enlace', 'link', 
+                'comentario', 'usuario', 'autor', 'fecha', 'publicado', 'actualizado',
+                'versión', 'edición', 'capítulo', 'sección', 'párrafo',
+                'imagen', 'foto', 'video', 'audio', 'archivo', 'documento',
+                
+                # Términos de navegación
+                'inicio', 'home', 'menú', 'buscar', 'encontrar', 'siguiente', 'anterior',
+                'arriba', 'abajo', 'izquierda', 'derecha', 'centro',
+                
+                # Términos temporales vagos
+                'ahora', 'hoy', 'ayer', 'mañana', 'reciente', 'nuevo', 'viejo', 'actual',
+                'antes', 'después', 'durante', 'mientras', 'todavía', 'aún',
+                
+                # Términos genéricos de cantidad/calidad
+                'mucho', 'poco', 'bastante', 'demasiado', 'suficiente',
+                'bueno', 'malo', 'mejor', 'peor', 'grande', 'pequeño',
+                'fácil', 'difícil', 'simple', 'complejo', 'normal', 'especial',
+                
+                # Conectores y rellenos
+                'realmente', 'verdaderamente', 'obviamente', 'claramente',
+                'específicamente', 'particularmente', 'especialmente', 'principalmente',
+                'generalmente', 'normalmente', 'usualmente', 'frecuentemente',
+                
+                # Referencias bibliográficas (universales)
+                'fuente', 'referencia', 'cita', 'bibliografía', 'nota', 'pie',
+                'índice', 'tabla', 'contenido', 'resumen', 'introducción', 'conclusión'
+            },
+            'en': {
+                'article', 'page', 'site', 'website', 'link', 'url',
+                'comment', 'user', 'author', 'date', 'published', 'updated',
+                'version', 'edition', 'chapter', 'section', 'paragraph',
+                'image', 'photo', 'video', 'audio', 'file', 'document',
+                'home', 'menu', 'search', 'find', 'next', 'previous',
+                'above', 'below', 'left', 'right', 'center',
+                'now', 'today', 'yesterday', 'tomorrow', 'recent', 'new', 'old', 'current',
+                'before', 'after', 'during', 'while', 'still', 'yet',
+                'much', 'little', 'enough', 'too', 'quite',
+                'good', 'bad', 'better', 'worse', 'big', 'small',
+                'easy', 'hard', 'simple', 'complex', 'normal', 'special',
+                'really', 'truly', 'obviously', 'clearly', 'definitely',
+                'specifically', 'particularly', 'especially', 'mainly',
+                'generally', 'normally', 'usually', 'frequently',
+                'source', 'reference', 'citation', 'bibliography', 'note', 'footnote',
+                'index', 'table', 'content', 'summary', 'introduction', 'conclusion'
+            }
+        }
+        return technical_stops.get(language, technical_stops['en'])
+
+    def _calculate_technical_quality_complete(self, word, full_content, language):
+        """TU ALGORITMO COMPLETO de calidad técnica"""
+        
+        score = 0.0
+        
+        # 1. Longitud óptima
+        if 5 <= len(word) <= 12:
+            score += 0.3
+        elif 4 <= len(word) <= 15:
+            score += 0.2
+        else:
+            score += 0.1
+        
+        # 2. Patrón de caracteres
+        letter_ratio = sum(c.isalpha() for c in word) / len(word)
+        if letter_ratio >= 0.8:
+            score += 0.2
+        
+        # 3. Frecuencia relativa
+        content_words = full_content.lower().split()
+        word_count = content_words.count(word)
+        total_words = len(content_words)
+        
+        if total_words > 0:
+            frequency = word_count / total_words
+            if 0.002 <= frequency <= 0.02:  # Frecuencia óptima (no muy rara, no muy común)
+                score += 0.3
+            elif 0.001 <= frequency <= 0.03:
+                score += 0.2
+        
+        # 4. Patrones limpios
+        clean_patterns = [
+            r'^[a-záéíóúüñ]+$',  # Solo letras (español)
+            r'^[a-zA-Z]+$'       # Solo letras (inglés)
+        ]
+        
+        if any(re.match(pattern, word) for pattern in clean_patterns):
+            score += 0.2
+        
+        return min(score, 1.0)
+
+    def _enhance_with_sentence_transformers(self, base_terms, content, language, target_keywords):
+        """NIVEL 2: Enhancement con Sentence Transformers"""
+        if not self.semantic_model_available:
+            return base_terms
+        
+        try:
+            import numpy as np
+            
+            # Crear embedding del contenido principal
+            main_embedding = self.sentence_model.encode([content])
+            
+            # Evaluar relevancia semántica de cada término
+            enhanced_terms = {}
+            keyword_context = " ".join(target_keywords)
+            keyword_embedding = self.sentence_model.encode([keyword_context])
+            
+            for term, frequency in base_terms.items():
+                # Crear contextos donde aparece el término
+                term_contexts = self._extract_term_contexts(content, term)
+                
+                if term_contexts:
+                    context_text = " ".join(term_contexts)
+                    context_embedding = self.sentence_model.encode([context_text])
+                    
+                    # Similitud con keywords principales
+                    similarity = np.dot(keyword_embedding, context_embedding.T)[0][0]
+                    
+                    # Solo mantener términos semánticamente relevantes
+                    if similarity > 0.25:  # Umbral de relevancia semántica
+                        # Boost por similitud semántica
+                        enhanced_frequency = frequency * (1 + similarity)
+                        enhanced_terms[term] = enhanced_frequency
+                        
+            # Ordenar por frecuencia enhanced
+            sorted_enhanced = sorted(enhanced_terms.items(), key=lambda x: x[1], reverse=True)
+            return dict(sorted_enhanced[:15])
+            
+        except Exception as e:
+            logger.error(f"Error en Sentence Transformers: {e}")
+            return base_terms
+
+    def _extract_term_contexts(self, content, term, window=30):
+        """Extraer contextos donde aparece un término"""
+        words = content.lower().split()
+        contexts = []
+        
+        for i, word in enumerate(words):
+            if term.lower() in word:
+                start = max(0, i - window)
+                end = min(len(words), i + window)
+                context = " ".join(words[start:end])
+                contexts.append(context)
+                
+                if len(contexts) >= 3:  # Máximo 3 contextos
+                    break
+        
+        return contexts
+
+    def _enhance_with_openai(self, terms, content, keywords):
+        """NIVEL 3: Enhancement con OpenAI (preparado)"""
+        
+        if not self.openai_available:
+            return terms
+        
+        try:
+            # Preparar contexto optimizado para IA
+            terms_list = list(terms.keys())[:10]
+            sample_content = content[:800]  # Muestra para no exceder tokens
+            
+            prompt = f"""
+            Analiza estos términos SEO extraídos de competidores para "{keywords[0]}":
+            
+            TÉRMINOS: {terms_list}
+            MUESTRA CONTENIDO: {sample_content}
+            
+            Evalúa cada término 1-10 en relevancia semántica.
+            Sugiere 2-3 términos adicionales importantes.
+            
+            JSON response:
+            {{
+                "enhanced_terms": [{{"term": "ejemplo", "relevance": 8}}],
+                "suggested_terms": ["nuevo1", "nuevo2"],
+                "filtered_out": ["irrelevante1"]
+            }}
+            """
+            
+            # Llamada a OpenAI (preparada para cuando esté disponible)
+            response = self.openai_client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=400,
+                temperature=0.2
+            )
+            
+            ai_result = json.loads(response.choices[0].message.content)
+            return self._merge_ai_results(terms, ai_result)
+            
+        except Exception as e:
+            logger.error(f"OpenAI enhancement falló: {e}")
+            return terms
+
+    def _merge_ai_results(self, base_terms, ai_result):
+        """Integrar resultados de IA con análisis base"""
+        final_terms = {}
+        
+        # Aplicar scores de IA a términos base
+        for term, frequency in base_terms.items():
+            ai_term = next((t for t in ai_result.get('enhanced_terms', []) if t['term'] == term), None)
+            if ai_term and ai_term['relevance'] >= 6:
+                # Boost por IA
+                final_terms[term] = frequency * (ai_term['relevance'] / 10)
+            elif term not in ai_result.get('filtered_out', []):
+                final_terms[term] = frequency
+        
+        # Agregar términos sugeridos por IA
+        for suggested_term in ai_result.get('suggested_terms', []):
+            final_terms[suggested_term] = 5  # Frecuencia estimada
+        
+        return dict(sorted(final_terms.items(), key=lambda x: x[1], reverse=True)[:15])
 
     def extract_important_ngrams(self, content, language, target_keywords, n_values=[2, 3]):
         """Extraer n-gramas importantes (frases de 2-3 palabras)"""
@@ -1997,18 +2292,18 @@ class MultilingualContentAnalyzer:
             return ""
 
     def analyze_terms_from_real_competitors(self, my_content, keywords, competitors_content, language):
-        """REEMPLAZAR esta función que está muy básica"""
+        """MEJORAR análisis manteniendo la estructura actual"""
         logger.info("🔍 Iniciando análisis de términos mejorado")
         
         try:
-            # Combinar contenido de competidores
+            # Mantener lógica actual
             all_competitor_text = " ".join([comp['content'] for comp in competitors_content])
             
-            # USAR MÉTODOS EXISTENTES (no crear nuevos)
+            # ESTRATEGIA HÍBRIDA (las funciones mejoradas automáticamente usarán los 3 niveles)
             semantic_terms = self.extract_semantic_terms(all_competitor_text, language, keywords, max_terms=15)
             important_ngrams = self.extract_important_ngrams(all_competitor_text, language, keywords)
             
-            # Análisis keywords principales
+            # Mantener análisis de keywords actual
             keyword_analysis = []
             for keyword in keywords:
                 my_count = self.count_term_in_content(my_content, keyword, language)
@@ -2024,21 +2319,25 @@ class MultilingualContentAnalyzer:
                     'priority': 'high' if my_count < avg_comp_count * 0.5 else 'medium'
                 })
             
-            # Análisis términos semánticos usando método existente
+            # MEJORAR análisis semántico con filtrado de calidad
             semantic_analysis = []
             for term, comp_frequency in semantic_terms.items():
                 my_count = self.count_term_in_content(my_content, term, language)
+                
+                # AGREGAR validación de calidad
                 if comp_frequency >= 3:
-                    semantic_analysis.append({
-                        'term': term,
-                        'type': 'semantic_term',
-                        'current_count': my_count,
-                        'competitor_average': comp_frequency,
-                        'recommended_count': max(1, int(comp_frequency * 0.7)),
-                        'priority': 'high' if my_count == 0 and comp_frequency >= 5 else 'medium'
-                    })
+                    quality_score = self._calculate_word_quality(term, all_competitor_text)
+                    if quality_score > 0.4:  # Solo términos de calidad
+                        semantic_analysis.append({
+                            'term': term,
+                            'type': 'semantic_term',
+                            'current_count': my_count,
+                            'competitor_average': comp_frequency,
+                            'recommended_count': max(1, int(comp_frequency * 0.7)),
+                            'priority': 'high' if my_count == 0 and comp_frequency >= 5 else 'medium'
+                        })
             
-            # Análisis n-gramas usando método existente  
+            # Mantener resto del código actual...
             ngram_analysis = []
             for ngram, comp_frequency in important_ngrams.items():
                 my_count = self.count_term_in_content(my_content, ngram, language)
@@ -2052,7 +2351,7 @@ class MultilingualContentAnalyzer:
                         'priority': 'medium' if my_count == 0 else 'low'
                     })
             
-            # Métricas
+            # Mantener estructura de respuesta actual
             my_word_count = len(my_content.split())
             competitor_word_counts = [len(comp['content'].split()) for comp in competitors_content]
             avg_competitor_words = sum(competitor_word_counts) / len(competitor_word_counts) if competitor_word_counts else 1000
@@ -2071,7 +2370,7 @@ class MultilingualContentAnalyzer:
         except Exception as e:
             logger.error(f"❌ Error en análisis: {e}")
             return {'keywords': [], 'semantic_terms': [], 'ngrams': [], 'content_analysis': {}}
-
+        
     # Métodos auxiliares (agregar también)
     def count_term_in_content(self, content, term, language):
         """Contar ocurrencias de un término"""
@@ -2079,46 +2378,130 @@ class MultilingualContentAnalyzer:
         return content_clean.count(term.lower())
 
     def extract_semantic_terms(self, content, language, target_keywords, max_terms=10):
-        """Extraer términos relacionados"""
+        """MEJORAR la función existente con tu algoritmo inteligente"""
         clean_content = re.sub(r'[^\w\s]', ' ', content.lower())
         words = clean_content.split()
         
+        # Usar stop words existentes + técnicas
         stop_words = self.get_stop_words(language)
-        significant_words = [
-            word for word in words 
-            if len(word) > 3 and word not in stop_words
-            and not any(keyword.lower() in word.lower() for keyword in target_keywords)
-        ]
+        
+        # AGREGAR filtrado técnico inteligente (mantener compatibilidad)
+        technical_stops = self._get_additional_stop_words(language)
+        all_stop_words = stop_words.union(technical_stops)
+        
+        # Filtrado inteligente (reemplazar lógica básica actual)
+        significant_words = []
+        for word in words:
+            if (len(word) > 3 and 
+                word not in all_stop_words and 
+                not any(keyword.lower() in word.lower() for keyword in target_keywords) and
+                not self._is_technical_junk(word)):  # NUEVA validación
+                significant_words.append(word)
         
         word_freq = Counter(significant_words)
-        return {word: count for word, count in word_freq.most_common(max_terms) if count >= 2}
+        
+        # MEJORAR filtrado por calidad (mantener interface actual)
+        quality_terms = {}
+        for word, count in word_freq.most_common(max_terms * 3):
+            if count >= 2:
+                # NUEVA lógica de calidad
+                if self._calculate_word_quality(word, content) > 0.4:
+                    quality_terms[word] = count
+        
+        # Mantener el return original
+        return dict(sorted(quality_terms.items(), key=lambda x: x[1], reverse=True)[:max_terms])
+
+    def _get_additional_stop_words(self, language):
+        """Método auxiliar para stop words técnicas"""
+        technical_stops = {
+            'es': {
+                'artículo', 'página', 'sitio', 'enlace', 'comentario', 'usuario', 'autor', 
+                'fecha', 'publicado', 'imagen', 'video', 'inicio', 'menú', 'buscar',
+                'ahora', 'hoy', 'nuevo', 'mejor', 'bueno', 'fácil', 'realmente', 'muy',
+                'fuente', 'referencia', 'contenido', 'introducción'
+            },
+            'en': {
+                'article', 'page', 'site', 'link', 'comment', 'user', 'author',
+                'date', 'published', 'image', 'video', 'home', 'menu', 'search', 
+                'now', 'today', 'new', 'better', 'good', 'easy', 'really', 'very',
+                'source', 'reference', 'content', 'introduction'
+            }
+        }
+        return technical_stops.get(language, technical_stops['en'])
+
+    def _is_technical_junk(self, word):
+        """Filtrar términos técnicamente inválidos"""
+        if word.isdigit():
+            return True
+        if re.search(r'\d{3,}|www\.|http|@|\.com', word):
+            return True
+        if len(word) > 20:
+            return True
+        return False
+
+    def _calculate_word_quality(self, word, full_content):
+        """Score de calidad simple"""
+        score = 0.0
+        
+        # Longitud óptima
+        if 5 <= len(word) <= 12:
+            score += 0.5
+        elif 4 <= len(word) <= 15:
+            score += 0.3
+        
+        # Proporción de letras
+        if sum(c.isalpha() for c in word) / len(word) >= 0.8:
+            score += 0.3
+        
+        # Frecuencia razonable
+        content_words = full_content.lower().split()
+        if content_words:
+            frequency = content_words.count(word) / len(content_words)
+            if 0.002 <= frequency <= 0.02:
+                score += 0.2
+        
+        return min(score, 1.0)
 
     def extract_important_ngrams(self, content, language, target_keywords):
-        """Extraer n-gramas (frases) importantes de 2-3 palabras"""
+        """MEJORAR función existente con validación inteligente"""
         clean_content = re.sub(r'[^\w\s]', ' ', content.lower())
         words = clean_content.split()
-        stop_words = self.get_stop_words(language)
         
         ngrams = defaultdict(int)
+        stop_words = self.get_stop_words(language)
+        technical_stops = self._get_additional_stop_words(language)
+        all_stops = stop_words.union(technical_stops)
         
-        # Bigramas (2 palabras)
-        for i in range(len(words) - 1):
-            word1, word2 = words[i], words[i+1]
-            if (len(word1) > 3 and len(word2) > 3 and 
-                word1 not in stop_words and word2 not in stop_words):
-                bigram = f"{word1} {word2}"
-                ngrams[bigram] += 1
+        for n in [2, 3]:
+            for i in range(len(words) - n + 1):
+                ngram_words = words[i:i+n]
+                
+                # MEJORAR validación (reemplazar lógica actual)
+                if self._is_valid_ngram_smart(ngram_words, all_stops):
+                    ngram = ' '.join(ngram_words)
+                    ngrams[ngram] += 1
         
-        # Trigramas (3 palabras) 
-        for i in range(len(words) - 2):
-            word1, word2, word3 = words[i], words[i+1], words[i+2] 
-            if (len(word1) > 2 and len(word2) > 2 and len(word3) > 2 and
-                word1 not in stop_words and word2 not in stop_words and word3 not in stop_words):
-                trigram = f"{word1} {word2} {word3}"
-                ngrams[trigram] += 1
+        # Mantener el formato de salida actual
+        important_ngrams = {
+            ngram: count for ngram, count in ngrams.items()
+            if count >= 2
+        }
         
-        # Filtrar n-gramas que aparecen al menos 2 veces
-        return {ngram: count for ngram, count in ngrams.items() if count >= 2}
+        return dict(Counter(important_ngrams).most_common(8))
+
+    def _is_valid_ngram_smart(self, words, stop_words):
+        """Validación mejorada de n-gramas"""
+        # Longitud mínima
+        if any(len(word) < 3 for word in words):
+            return False
+        
+        # No solo stop words
+        if all(word in stop_words for word in words):
+            return False
+        
+        # Al menos una palabra significativa
+        significant_count = sum(1 for word in words if word not in stop_words and len(word) > 4)
+        return significant_count > 0
     
     def clean_content_for_analysis(self, content):
         """Limpiar contenido para análisis de términos"""
