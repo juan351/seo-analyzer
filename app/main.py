@@ -283,11 +283,12 @@ def analyze_competitors():
         competitors_real_data = analysis.get('competitors_real_data', [])  # NUEVO
 
         logger.info(f"🔍 DEBUG: competitors_real_data = {competitors_real_data}")
-        logger.info(f"🔍 DEBUG: unique_competitors = {unique_competitors}")
+       
         
         # Construir lista de competidores con DATOS REALES
         wp_competitors = []
         unique_competitors = analysis.get('unique_competitors', [])
+        logger.info(f"🔍 DEBUG: unique_competitors = {unique_competitors}")
         
         for i, comp in enumerate(unique_competitors):
             # Buscar datos reales para este competidor
