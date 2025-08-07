@@ -1027,8 +1027,8 @@ class MultilingualContentAnalyzer:
     def extract_semantic_terms(self, content, language, target_keywords, max_terms=10):
         """ESTRATEGIA HÍBRIDA: Algoritmo base + Sentence Transformers + OpenAI preparado"""
         
-        # NIVEL 1: Algoritmo técnico completo
-        base_terms = self._extract_terms_technical_algorithm(content, language, target_keywords, max_terms)
+        # NIVEL 1: Algoritmo técnico universal (MEJORADO)
+        base_terms = self._extract_terms_universal_algorithm(content, language, target_keywords, max_terms)
         
         # NIVEL 2: Enhancement con Sentence Transformers (si disponible)
         if self.semantic_model_available and len(base_terms) > 0:
@@ -1049,34 +1049,39 @@ class MultilingualContentAnalyzer:
                 logger.info(f"ℹ️ OpenAI falló, usando Transformers: {e}")
         
         return enhanced_terms
-    
-    def _extract_terms_technical_algorithm(self, content, language, target_keywords, max_terms):
-        """NIVEL 1: Tu algoritmo técnico completo"""
+
+    def _extract_terms_universal_algorithm(self, content, language, target_keywords, max_terms):
+        """NIVEL 1: Algoritmo universal mejorado (reemplaza _extract_terms_technical_algorithm)"""
+        
         clean_content = re.sub(r'[^\w\s]', ' ', content.lower())
         words = clean_content.split()
         
-        # Stop words expandidas (tu lista completa)
+        # Filtrado técnico básico
         stop_words = self.get_stop_words(language)
-        technical_stops = self._get_comprehensive_technical_stops(language)
-        all_stop_words = stop_words.union(technical_stops)
         
-        # TU ALGORITMO: Filtrado técnico inteligente
-        significant_words = [
+        technically_valid = [
             word for word in words 
-            if self._is_technically_valid_term_complete(word, target_keywords, language, all_stop_words)
+            if len(word) > 3 and word not in stop_words 
+            and not any(kw.lower() in word.lower() for kw in target_keywords)
+            and not self._is_technical_junk_universal(word)
         ]
         
-        word_freq = Counter(significant_words)
+        word_freq = Counter(technically_valid)
         
-        # TU ALGORITMO: Calidad técnica completa
-        quality_terms = {}
-        for word, count in word_freq.most_common(max_terms * 3):
-            if count >= 2:
-                quality_score = self._calculate_technical_quality_complete(word, content, language)
-                if quality_score > 0.4:
-                    quality_terms[word] = count
+        # FILTRADO SEMÁNTICO UNIVERSAL (NUEVO)
+        semantic_terms = {}
+        for word, count in word_freq.most_common(max_terms * 4):
+            if count >= 3:
+                # Extraer contextos
+                contexts = self._extract_term_contexts_detailed(content, word, window=8)
+                
+                # Aplicar filtrado semántico universal
+                if self._is_semantically_valuable_universal(word, contexts, language):
+                    semantic_terms[word] = count
         
-        return dict(sorted(quality_terms.items(), key=lambda x: x[1], reverse=True)[:max_terms])
+        return dict(sorted(semantic_terms.items(), key=lambda x: x[1], reverse=True)[:max_terms])
+    
+    
 
     def _is_technically_valid_term_complete(self, word, exclude_keywords, language, stop_words):
         """TU ALGORITMO COMPLETO de validación técnica"""
@@ -2461,6 +2466,178 @@ class MultilingualContentAnalyzer:
                 score += 0.2
         
         return min(score, 1.0)
+    
+    def _is_semantically_valuable_universal(self, term, contexts, language):
+        """Filtrado universal por estructura lingüística, NO por tema"""
+        
+        # 1. FILTRAR PALABRAS DEMASIADO ABSTRACTAS (universal)
+        if self._is_too_abstract_universal(term, language):
+            return False
+        
+        # 2. VERIFICAR QUE TENGA FUNCIÓN SEMÁNTICA (no solo gramatical)
+        if not self._has_semantic_function(term, contexts, language):
+            return False
+        
+        # 3. DEBE APARECER EN CONTEXTOS INFORMATIVOS (no solo conectivos)
+        if not self._appears_in_informative_contexts(term, contexts):
+            return False
+        
+        return True
+
+    def _is_too_abstract_universal(self, word, language):
+        """Detectar palabras universalmente demasiado abstractas"""
+        
+        # Patrones universales de abstracción excesiva
+        overly_abstract_patterns = {
+            'es': [
+                # Palabras de 4 letras o menos que no sean técnicas
+                lambda w: len(w) <= 4 and w not in ['php', 'css', 'html', 'api', 'sql'],
+                
+                # Palabras que terminan en conceptos demasiado amplios
+                lambda w: w.endswith(('cosa', 'vida', 'modo', 'tipo', 'vez')),
+                
+                # Pronombres interrogativos/demostrativos
+                lambda w: w in ['cómo', 'qué', 'cuál', 'esto', 'eso', 'aquello'],
+                
+                # Cuantificadores vagos
+                lambda w: w in ['mucho', 'poco', 'algo', 'nada', 'todo', 'todos']
+            ],
+            
+            'en': [
+                lambda w: len(w) <= 4 and w not in ['html', 'css', 'api', 'sql', 'php'],
+                lambda w: w.endswith(('thing', 'way', 'time', 'kind', 'type')),
+                lambda w: w in ['how', 'what', 'which', 'this', 'that', 'those'],
+                lambda w: w in ['much', 'many', 'some', 'any', 'all', 'most']
+            ]
+        }
+        
+        patterns = overly_abstract_patterns.get(language, overly_abstract_patterns['en'])
+        return any(pattern(word) for pattern in patterns)
+
+    def _has_semantic_function(self, term, contexts, language):
+        """Verificar que la palabra tenga función semántica (no solo gramatical)"""
+        
+        if not contexts:
+            return False
+        
+        # Analizar si la palabra aporta información específica en sus contextos
+        informative_contexts = 0
+        
+        for context in contexts:
+            words_around = self._get_words_around_term(context, term)
+            
+            # Si está rodeada de palabras específicas/técnicas, probablemente sea informativa
+            specific_neighbors = sum(1 for w in words_around 
+                                if len(w) > 5 and not self._is_too_abstract_universal(w, language))
+            
+            if specific_neighbors >= 2:  # Al menos 2 palabras específicas cerca
+                informative_contexts += 1
+        
+        # Al menos 60% de contextos deben ser informativos
+        return (informative_contexts / len(contexts)) >= 0.6
+
+    def _appears_in_informative_contexts(self, term, contexts):
+        """Verificar que no aparezca solo en contextos conectivos/estructurales"""
+        
+        structural_indicators = [
+            # Patrones que indican texto estructural, no informativo
+            r'\b(página|artículo|capítulo|sección|índice|tabla|menú)\b',
+            r'\b(anterior|siguiente|arriba|abajo|inicio|fin)\b', 
+            r'\b(publicado|actualizado|editado|versión|fecha)\b',
+            r'\b(comentar|compartir|enlace|link|url|clic)\b',
+            r'\b(ejemplo|por ejemplo|es decir|o sea)\b'
+        ]
+        
+        informative_contexts = 0
+        
+        for context in contexts:
+            context_lower = context.lower()
+            
+            # Si el contexto NO contiene indicadores estructurales, es informativo
+            is_structural = any(re.search(pattern, context_lower) for pattern in structural_indicators)
+            
+            if not is_structural:
+                informative_contexts += 1
+        
+        # Al menos 70% de contextos deben ser informativos
+        return (informative_contexts / len(contexts)) >= 0.7
+
+    def _get_words_around_term(self, context, term, window=3):
+        """Obtener palabras que rodean al término en el contexto"""
+        words = context.lower().split()
+        
+        try:
+            term_index = words.index(term.lower())
+            start = max(0, term_index - window)
+            end = min(len(words), term_index + window + 1)
+            
+            # Excluir el término mismo
+            around_words = words[start:term_index] + words[term_index+1:end]
+            return around_words
+            
+        except ValueError:
+            return []
+
+    def _is_complete_semantic_unit(self, phrase_words, language):
+        """Verificar que la frase sea una unidad semántica completa (universal)"""
+        
+        # 1. NO debe empezar/terminar con partículas gramaticales
+        grammatical_particles = {
+            'es': {'de', 'del', 'la', 'el', 'los', 'las', 'un', 'una', 'por', 'para', 'con', 'sin', 'que', 'como', 'cuando', 'donde'},
+            'en': {'the', 'of', 'in', 'on', 'at', 'by', 'for', 'with', 'to', 'from', 'that', 'which', 'when', 'where'}
+        }
+        
+        particles = grammatical_particles.get(language, grammatical_particles['en'])
+        
+        if phrase_words[0] in particles or phrase_words[-1] in particles:
+            return False
+        
+        # 2. DEBE tener al menos una palabra "núcleo semántico" (sustantivo/concepto)
+        potential_nuclei = [w for w in phrase_words if len(w) > 5]  # Palabras largas suelen ser conceptuales
+        
+        if len(potential_nuclei) == 0:
+            return False
+        
+        # 3. Ratio de contenido vs función gramatical
+        content_words = sum(1 for w in phrase_words if w not in particles and len(w) > 3)
+        content_ratio = content_words / len(phrase_words)
+        
+        return content_ratio >= 0.6  # Al menos 60% palabras de contenido
+
+    def _calculate_semantic_completeness(self, phrase, full_content):
+        """Medir qué tan completa semánticamente es la frase"""
+        
+        # Buscar contextos donde aparece la frase
+        phrase_contexts = self._extract_term_contexts_detailed(full_content, phrase, window=10)
+        
+        if not phrase_contexts:
+            return 0.0
+        
+        completeness_score = 0.0
+        
+        for context in phrase_contexts:
+            # ¿La frase funciona como una unidad de información?
+            words_before = context.split(phrase)[0].split()[-3:] if phrase in context else []
+            words_after = context.split(phrase)[-1].split()[:3] if phrase in context else []
+            
+            # Si puede funcionar independientemente (no necesita palabras antes/después para tener sentido)
+            if self._can_stand_alone_semantically(phrase, words_before, words_after):
+                completeness_score += 1.0
+        
+        return min(completeness_score / len(phrase_contexts), 1.0)
+
+    def _can_stand_alone_semantically(self, phrase, words_before, words_after):
+        """¿Puede la frase funcionar como unidad semántica independiente?"""
+        
+        # Si necesita palabras antes/después para completar el sentido, no es autónoma
+        dependency_indicators_before = ['es', 'son', 'fue', 'era', 'será', 'está', 'estaba', 'is', 'are', 'was', 'will', 'has', 'have']
+        dependency_indicators_after = ['de', 'del', 'que', 'para', 'por', 'of', 'that', 'for', 'to', 'with']
+        
+        # Si las palabras inmediatamente antes/después indican dependencia, la frase no es autónoma
+        needs_before = any(word in dependency_indicators_before for word in words_before)
+        needs_after = any(word in dependency_indicators_after for word in words_after)
+        
+        return not (needs_before or needs_after)
 
     def extract_important_ngrams(self, content, language, target_keywords):
         """MEJORAR función existente con validación inteligente"""
