@@ -26,7 +26,7 @@ class MultilingualContentAnalyzer:
         self.cache = cache_manager
         self.language_detector = LanguageDetector()
         self.nlp_models = {}
-        #self.load_models()
+        self.load_models()
         
         # Headers para scraping
         self.headers = {
@@ -44,7 +44,7 @@ class MultilingualContentAnalyzer:
         
         try:
             from sentence_transformers import SentenceTransformer
-            self.sentence_model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
+            self.sentence_model = SentenceTransformer('paraphrase-multilingual-MiniLM-L6-v2')
             self.semantic_model_available = True
             logger.info("✅ Sentence Transformers disponible")
         except ImportError:
@@ -54,20 +54,6 @@ class MultilingualContentAnalyzer:
         if hasattr(self, 'openai_client') and self.openai_client:
             self.openai_available = True
             logger.info("✅ OpenAI disponible")
-
-    def _load_sentence_model_lazy(self):
-        """Cargar modelo solo cuando sea necesario"""
-        if self.sentence_model is None:
-            try:
-                from sentence_transformers import SentenceTransformer
-                self.sentence_model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
-                self.semantic_model_available = True
-                logger.info("✅ Sentence Transformers cargado lazy")
-            except Exception as e:
-                logger.error(f"❌ Error cargando modelo lazy: {e}")
-                self.semantic_model_available = False
-    
-     
         
     def load_models(self):
         """Cargar modelos disponibles"""
@@ -1271,11 +1257,7 @@ class MultilingualContentAnalyzer:
         
         try:
             import numpy as np
-            self._load_sentence_model_lazy()
-
-            if not self.semantic_model_available:
-                return base_terms
-        
+            
             # Crear embedding del contenido principal
             main_embedding = self.sentence_model.encode([content])
             
