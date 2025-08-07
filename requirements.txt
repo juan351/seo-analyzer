@@ -20,7 +20,10 @@ nltk==3.8.1
 textstat==0.7.3
 spacy==3.7.2
 scikit-learn==1.3.2
-sentence-transformers==2.2.2
+sentence-transformers==2.6.1
+huggingface_hub==0.19.4
+transformers>=4.21.0
+torch>=1.11.0
 
 # Detección de idioma (versión compatible)
 langdetect==1.0.7
