@@ -1024,31 +1024,70 @@ class MultilingualContentAnalyzer:
             'content_cleaned': clean_content
         }
 
-    def extract_semantic_terms(self, content, language, target_keywords, max_terms=10):
-        """ESTRATEGIA HÍBRIDA: Algoritmo base + Sentence Transformers + OpenAI preparado"""
+    def extract_semantic_terms(self, content, language, target_keywords, max_terms=25):  # AUMENTAR
+        """Devolver más términos con sistema de prioridades"""
         
-        # NIVEL 1: Algoritmo técnico universal (MEJORADO)
-        base_terms = self._extract_terms_universal_algorithm(content, language, target_keywords, max_terms)
+        # NIVEL 1: Algoritmo base con más términos
+        base_terms = self._extract_terms_universal_algorithm(content, language, target_keywords, max_terms * 2)
         
-        # NIVEL 2: Enhancement con Sentence Transformers (si disponible)
+        # NIVEL 2: Enhancement con Sentence Transformers
         if self.semantic_model_available and len(base_terms) > 0:
             enhanced_terms = self._enhance_with_sentence_transformers(
                 base_terms, content, language, target_keywords
             )
-            logger.info(f"🤖 Sentence Transformers mejoró {len(enhanced_terms)} términos")
         else:
             enhanced_terms = base_terms
         
-        # NIVEL 3: Preparado para OpenAI (futuro)
-        if self.openai_available and hasattr(self, 'use_openai_enhancement'):
-            try:
-                final_terms = self._enhance_with_openai(enhanced_terms, content, target_keywords)
-                logger.info("🚀 OpenAI enhancement aplicado")
-                return final_terms
-            except Exception as e:
-                logger.info(f"ℹ️ OpenAI falló, usando Transformers: {e}")
+        # NIVEL 3: Clasificar por prioridades y devolver MÁS términos
+        return self._categorize_and_expand_terms(enhanced_terms, max_terms)
+
+    def _categorize_and_expand_terms(self, terms, max_terms):
+        """Clasificar términos por prioridad estilo Surfer"""
         
-        return enhanced_terms
+        categorized = {
+            'high_priority': {},     # 8-10 términos
+            'medium_priority': {},   # 10-12 términos  
+            'low_priority': {}       # 5-8 términos
+        }
+        
+        for term, frequency in terms.items():
+            # Criterios para clasificación
+            term_length = len(term)
+            
+            if frequency >= 5 and term_length >= 6:
+                categorized['high_priority'][term] = frequency
+            elif frequency >= 3 and term_length >= 5:
+                categorized['medium_priority'][term] = frequency  
+            elif frequency >= 2:
+                categorized['low_priority'][term] = frequency
+        
+        # Combinar manteniendo balance
+        final_terms = {}
+        
+        # Tomar hasta 10 high priority
+        high_terms = dict(sorted(categorized['high_priority'].items(), 
+                            key=lambda x: x[1], reverse=True)[:10])
+        final_terms.update(high_terms)
+        
+        # Tomar hasta 12 medium priority  
+        medium_terms = dict(sorted(categorized['medium_priority'].items(), 
+                                key=lambda x: x[1], reverse=True)[:12])
+        final_terms.update(medium_terms)
+        
+        # Completar con low priority hasta llegar a max_terms
+        remaining_slots = max_terms - len(final_terms)
+        if remaining_slots > 0:
+            low_terms = dict(sorted(categorized['low_priority'].items(), 
+                                key=lambda x: x[1], reverse=True)[:remaining_slots])
+            final_terms.update(low_terms)
+        
+        return final_terms
+
+    def extract_important_ngrams(self, content, language, target_keywords):
+        """AUMENTAR cantidad de n-gramas también"""
+        
+        # Tu código actual pero cambiar:
+        return dict(sorted(coherent_ngrams.items(), key=lambda x: x[1], reverse=True)[:12])  
 
     def _extract_terms_universal_algorithm(self, content, language, target_keywords, max_terms):
         """NIVEL 1: Algoritmo universal mejorado (reemplaza _extract_terms_technical_algorithm)"""
@@ -1334,36 +1373,110 @@ class MultilingualContentAnalyzer:
         
         return dict(sorted(final_terms.items(), key=lambda x: x[1], reverse=True)[:15])
 
-    def extract_important_ngrams(self, content, language, target_keywords, n_values=[2, 3]):
-        """Extraer n-gramas importantes (frases de 2-3 palabras)"""
-        clean_content = self.clean_content_for_analysis(content)
+    def extract_important_ngrams(self, content, language, target_keywords):
+        """Extraer n-gramas priorizando frases más completas (3-4 palabras)"""
+        clean_content = re.sub(r'[^\w\s]', ' ', content.lower())
         words = clean_content.split()
         
         ngrams = defaultdict(int)
         stop_words = self.get_stop_words(language)
         
-        for n in n_values:
+        # CAMBIO: Priorizar n-gramas más largos
+        for n in [4, 3, 2]:  # Orden invertido: primero 4-gramas, luego 3, finalmente 2
             for i in range(len(words) - n + 1):
                 ngram_words = words[i:i+n]
                 
-                # Filtrar n-gramas que contengan stop words o sean muy cortos
-                if any(len(word) < 3 for word in ngram_words):
-                    continue
-                if any(word in stop_words for word in ngram_words):
-                    continue
-                
-                ngram = ' '.join(ngram_words)
-                
-                # Solo n-gramas que aparezcan al menos 2 veces
-                ngrams[ngram] += 1
+                if self._is_coherent_phrase(ngram_words, stop_words, target_keywords, language):
+                    ngram = ' '.join(ngram_words)
+                    
+                    # BONUS por longitud: n-gramas más largos tienen mayor peso
+                    weight_bonus = n * 0.5  # 4-gramas = +2.0, 3-gramas = +1.5, bigramas = +1.0
+                    ngrams[ngram] += (1 * weight_bonus)
         
-        # Filtrar y devolver solo los más frecuentes
-        important_ngrams = {
-            ngram: count for ngram, count in ngrams.items()
-            if count >= 2
+        # Solo frases que aparecen múltiples veces Y tienen sentido
+        coherent_ngrams = {}
+        for ngram, weighted_count in ngrams.items():
+            # Calcular frecuencia real (sin bonus)
+            real_count = content.lower().count(ngram)
+            
+            if real_count >= 2:  # Frecuencia mínima real
+                coherence_score = self._calculate_phrase_coherence(ngram, content, target_keywords, language)
+                
+                # FILTRO ADICIONAL: Priorizar frases más largas con mejor coherencia
+                if coherence_score > 0.4:  # Umbral más bajo para compensar longitud
+                    # Score final combina frecuencia, longitud y coherencia
+                    final_score = weighted_count * coherence_score
+                    coherent_ngrams[ngram] = final_score
+        
+        # Ordenar por score final y tomar los mejores
+        return dict(sorted(coherent_ngrams.items(), key=lambda x: x[1], reverse=True)[:8])
+    
+    def _is_coherent_phrase(self, words, stop_words, target_keywords, language):
+    """Verificar coherencia semántica con bonus para frases más largas"""
+    
+    # 1. Filtros básicos (mantener)
+    connective_stops = {
+        'es': {'del', 'de', 'la', 'el', 'los', 'las', 'por', 'para', 'con', 'sin', 'que', 'como', 'una', 'uno'},
+        'en': {'the', 'of', 'in', 'on', 'at', 'by', 'for', 'with', 'to', 'from', 'that', 'which', 'a', 'an'}
+    }
+    
+    conn_stops = connective_stops.get(language, connective_stops['en'])
+    
+    # Más flexible con frases largas: solo verificar que no EMPIECEN mal
+    if words[0] in conn_stops:
+        return False
+    
+    # 2. Para frases de 3+ palabras, ser más permisivo
+    if len(words) >= 3:
+        # Al menos 60% palabras sustantivas
+        substantial_words = sum(1 for word in words if len(word) > 4 and word not in stop_words)
+        substantial_ratio = substantial_words / len(words)
+        
+        return substantial_ratio >= 0.5  # Más permisivo para frases largas
+    
+    else:  # Bigramas: ser más estricto
+        substantial_words = sum(1 for word in words if len(word) > 4 and word not in stop_words)
+        substantial_ratio = substantial_words / len(words)
+        
+        return substantial_ratio >= 0.8  # Más estricto para bigramas
+
+    def _calculate_phrase_coherence(self, phrase, full_content, target_keywords, language):
+        """Calcular coherencia con bonus para frases más largas"""
+        score = 0.0
+        words = phrase.split()
+        
+        # BONUS BASE por longitud
+        length_bonus = {
+            2: 0.0,   # Sin bonus para bigramas
+            3: 0.2,   # Bonus moderado para trigramas
+            4: 0.4,   # Bonus alto para tetragramas
+            5: 0.5    # Bonus máximo para 5+ palabras
         }
         
-        return dict(Counter(important_ngrams).most_common(8))
+        phrase_length = len(words)
+        score += length_bonus.get(phrase_length, 0.5)
+        
+        # 1. Proximidad a keywords (mantener)
+        phrase_contexts = self._extract_term_contexts_detailed(full_content, phrase, window=20)
+        if phrase_contexts:
+            keyword_proximity = sum(1 for context in phrase_contexts 
+                                if any(kw.lower() in context.lower() for kw in target_keywords))
+            proximity_ratio = keyword_proximity / len(phrase_contexts)
+            score += proximity_ratio * 0.3
+        
+        # 2. Especificidad técnica (mantener pero ajustar para frases largas)
+        technical_words = sum(1 for word in words if len(word) > 6)
+        specificity = technical_words / len(words)
+        score += specificity * 0.3
+        
+        # 3. NUEVO: Bonus por "completitud semántica" de frases largas
+        if phrase_length >= 3:
+            # Verificar que no sea solo relleno + una palabra técnica
+            non_filler_words = [w for w in words if len(w) > 5]
+            if len(non_filler_words) >= 2:  # Al menos 2 palabras sustantivas
+                score += 0.2
+        
+        return min(score, 1.0)
 
     def count_term_in_content(self, content, term, language):
         """Contar ocurrencias de un término específico"""
