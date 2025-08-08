@@ -526,7 +526,7 @@ class MultilingualContentAnalyzer:
             logger.info(f"Error extrayendo términos relacionados: {e}")
             return []
 
-    def analyze_competitors(self, keywords, my_domain, top_n=5):
+    def analyze_competitors(self, keywords, my_domain, top_n=9):
         """Método público para análisis de competidores independiente"""
         try:
             from ..services.serp_scraper import MultilingualSerpScraper
@@ -2055,7 +2055,7 @@ class MultilingualContentAnalyzer:
             logger.info(f"Error extrayendo términos relacionados: {e}")
             return []
 
-    def analyze_competitors(self, keywords, my_domain, top_n=5):
+    def analyze_competitors(self, keywords, my_domain, top_n=9):
         """Método público para análisis de competidores independiente"""
         try:
             from ..services.serp_scraper import MultilingualSerpScraper
@@ -3268,7 +3268,7 @@ class MultilingualContentAnalyzer:
         
         return response
 
-    def analyze_competitors_with_terms(self, keywords, my_domain, my_content, top_n=7):
+    def analyze_competitors_with_terms(self, keywords, my_domain, my_content, top_n=9):
         """Versión con datos reales de competidores"""
         try:
             logger.info("🚀 INICIANDO analyze_competitors_with_terms")
