@@ -8,7 +8,6 @@ from urllib.parse import urlparse, urljoin
 import time
 import logging
 import math
-import json
 
 # Logging
 logging.basicConfig(level=logging.INFO)
@@ -224,8 +223,8 @@ class MultilingualContentAnalyzer:
                 if not serp_results or 'organic_results' not in serp_results:
                     continue
                 
-                # Obtener top 3-5 resultados
-                top_results = serp_results['organic_results'][:5]
+                # Obtener top 3-10 resultados
+                top_results = serp_results['organic_results'][:10]
                 keyword_competitors = []
                 
                 for result in top_results:
@@ -561,11 +560,8 @@ class MultilingualContentAnalyzer:
             # Remover la keyword principal para encontrar términos relacionados
             all_text = all_text.replace(main_keyword.lower(), '')
             
-            lang = self.language_detector.detect_language(all_text) or 'en'
-            if lang in ('es', 'pt', 'it', 'fr', 'de'):
-                words = re.findall(r'\b[a-záéíóúüñçàèìòùäëïöüß]+\b', all_text, flags=re.IGNORECASE)
-            else:
-                words = re.findall(r'\b[a-zA-Z]+\b', all_text)
+            # Extraer palabras significativas
+            words = re.findall(r'\b[a-záéíóúüñ]+\b', all_text) if 'spanish' in str(type(self)) else re.findall(r'\b[a-zA-Z]+\b', all_text)
             
             # Filtrar stop words y palabras muy cortas
             stop_words = self.get_stop_words('es')  # Asumiendo español por defecto
@@ -795,7 +791,7 @@ class MultilingualContentAnalyzer:
         word_freq = Counter(words)
         
         return {
-            'top_words': word_freq.most_common(10),
+            'top_words': word_freq.most_common(20),
             'unique_words': len(set(words)),
             'vocabulary_richness': len(set(words)) / len(words) if words else 0
         }
@@ -813,7 +809,7 @@ class MultilingualContentAnalyzer:
         return {
             'entities': entities[:10],
             'entity_count': len(entities),
-            'noun_phrases': [chunk.text for chunk in doc.noun_chunks][:10]
+            'noun_phrases': [chunk.text for chunk in doc.noun_chunks][:20]
         }
 
     def generate_suggestions(self, analysis, language):
@@ -1086,6 +1082,23 @@ class MultilingualContentAnalyzer:
         
         return content.strip()
 
+    def extract_semantic_terms(self, content, language, target_keywords, max_terms=25):
+        """Extraer términos semánticamente relacionados con sistema de prioridades"""
+        
+        # NIVEL 1: Algoritmo base con más términos
+        base_terms = self._extract_terms_universal_algorithm(content, language, target_keywords, max_terms * 2)
+        
+        # NIVEL 2: Enhancement con Sentence Transformers
+        if self.semantic_model_available and len(base_terms) > 0:
+            enhanced_terms = self._enhance_with_sentence_transformers(
+                base_terms, content, language, target_keywords
+            )
+        else:
+            enhanced_terms = base_terms
+        
+        # NIVEL 3: Clasificar por prioridades y devolver MÁS términos
+        return self._categorize_and_expand_terms(enhanced_terms, max_terms)
+    
     def _extract_terms_universal_algorithm(self, content, language, target_keywords, max_terms):
         """NIVEL 1: Algoritmo universal mejorado - RESTAURADO"""
         
@@ -1113,30 +1126,184 @@ class MultilingualContentAnalyzer:
         for word, count in word_freq.most_common(max_terms * 3):
             if count >= 2:
                 # NUEVA lógica de calidad (RESTAURADO)
-                if self._calculate_word_quality(word, content) > 0.4:
+                if self._calculate_word_quality(word, content) > 0.6:
                     quality_terms[word] = count
         
         # Mantener el return original (RESTAURADO)
         return dict(sorted(quality_terms.items(), key=lambda x: x[1], reverse=True)[:max_terms])
 
-    def extract_semantic_terms(self, content, language, target_keywords, max_terms=25):
-        """Extraer términos semánticamente relacionados con sistema de prioridades"""
-        
-        # NIVEL 1: Algoritmo base con más términos
-        base_terms = self._extract_terms_universal_algorithm(content, language, target_keywords, max_terms * 2)
-        
-        # NIVEL 2: Enhancement con Sentence Transformers
-        if self.semantic_model_available and len(base_terms) > 0:
-            enhanced_terms = self._enhance_with_sentence_transformers(
-                base_terms, content, language, target_keywords
-            )
-        else:
-            enhanced_terms = base_terms
-        
-        # NIVEL 3: Clasificar por prioridades y devolver MÁS términos
-        return self._categorize_and_expand_terms(enhanced_terms, max_terms)
-
  
+    def _get_additional_stop_words(self, language):
+        """Método auxiliar para stop words técnicas - VERSIÓN COMPLETA"""
+        technical_stops = {
+            'es': {
+                'artículo', 'página', 'sitio', 'enlace', 'comentario', 'usuario', 'autor', 
+                'fecha', 'publicado', 'imagen', 'video', 'inicio', 'menú', 'buscar',
+                'ahora', 'hoy', 'nuevo', 'mejor', 'bueno', 'fácil', 'realmente', 'muy',
+                'fuente', 'referencia', 'contenido', 'introducción',
+                # AGREGAR términos faltantes críticos:
+                'diferentes', 'diferente', 'versión', 'edición', 'actualizado',
+                'siguiente', 'anterior', 'primero', 'segundo', 'tercero',
+                'ejemplo', 'casos', 'tipo', 'tipos', 'forma', 'formas',
+                'manera', 'maneras', 'modo', 'modos', 'tiempo', 'tiempos',
+                'lugar', 'lugares', 'parte', 'partes', 'momento', 'momentos',
+                'problema', 'problemas', 'solución', 'soluciones',
+                'resultado', 'resultados', 'proceso', 'procesos',
+                'sistema', 'sistemas', 'método', 'métodos',
+                'información', 'datos', 'detalles', 'aspectos',
+                'características', 'propiedades', 'elementos', 'componentes'
+            },
+            'en': {
+                'article', 'page', 'site', 'link', 'comment', 'user', 'author',
+                'date', 'published', 'image', 'video', 'home', 'menu', 'search', 
+                'now', 'today', 'new', 'better', 'good', 'easy', 'really', 'very',
+                'source', 'reference', 'content', 'introduction',
+                # AGREGAR términos faltantes críticos:
+                'different', 'various', 'version', 'edition', 'updated',
+                'next', 'previous', 'first', 'second', 'third',
+                'example', 'cases', 'type', 'types', 'form', 'forms',
+                'way', 'ways', 'time', 'times', 'place', 'places',
+                'part', 'parts', 'moment', 'moments',
+                'problem', 'problems', 'solution', 'solutions',
+                'result', 'results', 'process', 'processes',
+                'system', 'systems', 'method', 'methods',
+                'information', 'data', 'details', 'aspects',
+                'characteristics', 'properties', 'elements', 'components'
+            }
+        }
+        return technical_stops.get(language, technical_stops['en'])
+    
+
+
+    def _is_technically_valid_term_complete(self, word, exclude_keywords, language, stop_words):
+        """ALGORITMO COMPLETO de validación técnica"""
+        
+        # Longitud válida
+        if len(word) < 4 or len(word) > 20:
+            return False
+        
+        # No es número puro
+        if word.isdigit():
+            return False
+        
+        # No es keyword principal
+        if any(kw.lower() in word.lower() for kw in exclude_keywords):
+            return False
+        
+        # Stop words técnicas
+        if word in stop_words:
+            return False
+        
+        # Patrones problemáticos (TU LISTA COMPLETA)
+        problematic_patterns = [
+            r'\d{3,}',        # 3+ dígitos consecutivos
+            r'www\.',         # URLs
+            r'http',          # Enlaces
+            r'@',             # Emails/mentions
+            r'\.com|\.org',   # Dominios
+            r'^[a-z]{1,2}$',  # Letras sueltas (a, de, el, etc.)
+        ]
+        
+        if any(re.search(pattern, word) for pattern in problematic_patterns):
+            return False
+        
+        return True
+    
+    def _get_comprehensive_technical_stops(self, language):
+        """TU LISTA COMPLETA de stop words técnicas"""
+        technical_stops = {
+            'es': {
+                # Meta-términos web/referencias
+                'artículo', 'página', 'sitio', 'website', 'enlace', 'link', 
+                'comentario', 'usuario', 'autor', 'fecha', 'publicado', 'actualizado',
+                'versión', 'edición', 'capítulo', 'sección', 'párrafo',
+                'imagen', 'foto', 'video', 'audio', 'archivo', 'documento',
+                
+                # Términos de navegación
+                'inicio', 'home', 'menú', 'buscar', 'encontrar', 'siguiente', 'anterior',
+                'arriba', 'abajo', 'izquierda', 'derecha', 'centro',
+                
+                # Términos temporales vagos
+                'ahora', 'hoy', 'ayer', 'mañana', 'reciente', 'nuevo', 'viejo', 'actual',
+                'antes', 'después', 'durante', 'mientras', 'todavía', 'aún',
+                
+                # Términos genéricos de cantidad/calidad
+                'mucho', 'poco', 'bastante', 'demasiado', 'suficiente',
+                'bueno', 'malo', 'mejor', 'peor', 'grande', 'pequeño',
+                'fácil', 'difícil', 'simple', 'complejo', 'normal', 'especial',
+                
+                # Conectores y rellenos
+                'realmente', 'verdaderamente', 'obviamente', 'claramente',
+                'específicamente', 'particularmente', 'especialmente', 'principalmente',
+                'generalmente', 'normalmente', 'usualmente', 'frecuentemente',
+                
+                # Referencias bibliográficas (universales)
+                'fuente', 'referencia', 'cita', 'bibliografía', 'nota', 'pie',
+                'índice', 'tabla', 'contenido', 'resumen', 'introducción', 'conclusión'
+            },
+            'en': {
+                'article', 'page', 'site', 'website', 'link', 'url',
+                'comment', 'user', 'author', 'date', 'published', 'updated',
+                'version', 'edition', 'chapter', 'section', 'paragraph',
+                'image', 'photo', 'video', 'audio', 'file', 'document',
+                'home', 'menu', 'search', 'find', 'next', 'previous',
+                'above', 'below', 'left', 'right', 'center',
+                'now', 'today', 'yesterday', 'tomorrow', 'recent', 'new', 'old', 'current',
+                'before', 'after', 'during', 'while', 'still', 'yet',
+                'much', 'little', 'enough', 'too', 'quite',
+                'good', 'bad', 'better', 'worse', 'big', 'small',
+                'easy', 'hard', 'simple', 'complex', 'normal', 'special',
+                'really', 'truly', 'obviously', 'clearly', 'definitely',
+                'specifically', 'particularly', 'especially', 'mainly',
+                'generally', 'normally', 'usually', 'frequently',
+                'source', 'reference', 'citation', 'bibliography', 'note', 'footnote',
+                'index', 'table', 'content', 'summary', 'introduction', 'conclusion'
+            }
+        }
+        return technical_stops.get(language, technical_stops['en'])
+
+    
+    def _calculate_technical_quality_complete(self, word, full_content, language):
+        """TU ALGORITMO COMPLETO de calidad técnica"""
+        
+        score = 0.0
+        
+        # 1. Longitud óptima
+        if 5 <= len(word) <= 12:
+            score += 0.3
+        elif 4 <= len(word) <= 15:
+            score += 0.2
+        else:
+            score += 0.1
+        
+        # 2. Patrón de caracteres
+        letter_ratio = sum(c.isalpha() for c in word) / len(word)
+        if letter_ratio >= 0.8:
+            score += 0.2
+        
+        # 3. Frecuencia relativa
+        content_words = full_content.lower().split()
+        word_count = content_words.count(word)
+        total_words = len(content_words)
+        
+        if total_words > 0:
+            frequency = word_count / total_words
+            if 0.002 <= frequency <= 0.02:  # Frecuencia óptima (no muy rara, no muy común)
+                score += 0.3
+            elif 0.001 <= frequency <= 0.03:
+                score += 0.2
+        
+        # 4. Patrones limpios
+        clean_patterns = [
+            r'^[a-záéíóúüñ]+$',  # Solo letras (español)
+            r'^[a-zA-Z]+$'       # Solo letras (inglés)
+        ]
+        
+        if any(re.match(pattern, word) for pattern in clean_patterns):
+            score += 0.2
+        
+        return min(score, 1.0)
+
     def _is_technical_junk_universal(self, word):
         """Filtrar términos técnicamente inválidos"""
         if word.isdigit():
@@ -1249,6 +1416,68 @@ class MultilingualContentAnalyzer:
                     break
         
         return contexts
+    
+    def _enhance_with_openai(self, terms, content, keywords):
+        """NIVEL 3: Enhancement con OpenAI (preparado)"""
+        
+        if not self.openai_available:
+            return terms
+        
+        try:
+            # Preparar contexto optimizado para IA
+            terms_list = list(terms.keys())[:10]
+            sample_content = content[:800]  # Muestra para no exceder tokens
+            
+            prompt = f"""
+            Analiza estos términos SEO extraídos de competidores para "{keywords[0]}":
+            
+            TÉRMINOS: {terms_list}
+            MUESTRA CONTENIDO: {sample_content}
+            
+            Evalúa cada término 1-10 en relevancia semántica.
+            Sugiere 2-3 términos adicionales importantes.
+            
+            JSON response:
+            {{
+                "enhanced_terms": [{{"term": "ejemplo", "relevance": 8}}],
+                "suggested_terms": ["nuevo1", "nuevo2"],
+                "filtered_out": ["irrelevante1"]
+            }}
+            """
+            
+            # Llamada a OpenAI (preparada para cuando esté disponible)
+            response = self.openai_client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=400,
+                temperature=0.2
+            )
+            
+            ai_result = json.loads(response.choices[0].message.content)
+            return self._merge_ai_results(terms, ai_result)
+            
+        except Exception as e:
+            logger.error(f"OpenAI enhancement falló: {e}")
+            return terms
+
+    def _merge_ai_results(self, base_terms, ai_result):
+        """Integrar resultados de IA con análisis base"""
+        final_terms = {}
+        
+        # Aplicar scores de IA a términos base
+        for term, frequency in base_terms.items():
+            ai_term = next((t for t in ai_result.get('enhanced_terms', []) if t['term'] == term), None)
+            if ai_term and ai_term['relevance'] >= 6:
+                # Boost por IA
+                final_terms[term] = frequency * (ai_term['relevance'] / 10)
+            elif term not in ai_result.get('filtered_out', []):
+                final_terms[term] = frequency
+        
+        # Agregar términos sugeridos por IA
+        for suggested_term in ai_result.get('suggested_terms', []):
+            final_terms[suggested_term] = 5  # Frecuencia estimada
+        
+        return dict(sorted(final_terms.items(), key=lambda x: x[1], reverse=True)[:15])
 
     def _is_semantically_valuable_universal(self, term, contexts, language):
         """Filtrado universal por estructura lingüística"""
@@ -1407,40 +1636,52 @@ class MultilingualContentAnalyzer:
         return dict(sorted(coherent_ngrams.items(), key=lambda x: x[1], reverse=True)[:25])
 
     def _is_coherent_phrase(self, words, stop_words, target_keywords, language):
-        """Verificar coherencia semántica - MÁS ESTRICTO"""
+        """Verificar coherencia semántica con bonus para frases más largas"""
         
-        # 1. Filtros básicos más estrictos
+        # 1. Filtros básicos
         connective_stops = {
-            'es': {'del', 'de', 'la', 'el', 'los', 'las', 'por', 'para', 'con', 'sin', 'que', 'como', 'una', 'uno', 'en', 'se', 'le', 'lo', 'al', 'y', 'o'},
-            'en': {'the', 'of', 'in', 'on', 'at', 'by', 'for', 'with', 'to', 'from', 'that', 'which', 'a', 'an', 'and', 'or', 'is', 'are', 'was', 'will'}
+            'es': {'del', 'de', 'la', 'el', 'los', 'las', 'por', 'para', 'con', 'sin', 'que', 'como', 'una', 'uno'},
+            'en': {'the', 'of', 'in', 'on', 'at', 'by', 'for', 'with', 'to', 'from', 'that', 'which', 'a', 'an'}
         }
         
         conn_stops = connective_stops.get(language, connective_stops['en'])
         
-        # NO debe empezar O terminar con conectivos
-        if words[0] in conn_stops or words[-1] in conn_stops:
+        # Más flexible con frases largas: solo verificar que no EMPIECEN mal
+        if words[0] in conn_stops:
             return False
-        
-        # 2. Filtrar frases que son obviamente estructurales/narrativas
-        narrative_patterns = [
-            r'quedará|quedaron|quedarán',  # Narrativo temporal
-            r'había|habrá|habría',         # Narrativo temporal
-            r'entonces|luego|después',     # Conectores temporales
-            r'mientras|durante|cuando',    # Conectores temporales
-            r'porque|debido|causa',        # Conectores causales
-        ]
-        
+
+        if language == 'es':
+            narrative_patterns = [
+                r'\b(quedará|quedaron|quedarán|quedaba|quedó)\b',  # Narrativo temporal
+                r'\b(había|habrá|habría|estaba|estuvieron|estará)\b',  # Narrativo temporal
+                r'\b(entonces|luego|después|posteriormente|anteriormente|previamente)\b',  # Temporales
+                r'\b(mientras|durante|cuando|antes|después)\b',  # Temporales
+                r'\b(porque|debido\s+a|a\s+causa\s+de|por\s+lo\s+tanto|por\s+consiguiente)\b',  # Causales
+            ]
+        else:  # en / fallback
+            narrative_patterns = [
+                r'\b(was|were|had|became|become|will\s+be|would|used\s+to)\b',  # Narrativo temporal
+                r'\b(then|later|after|before|during|while|when|meanwhile|subsequently|eventually|previously|initially)\b',  # Temporales
+                r'\b(because|due\s+to|since|therefore|thus|hence|as\s+a\s+result|as\s+a\s+consequence)\b',  # Causales
+             ]
+         
         phrase_text = ' '.join(words)
-        if any(re.search(pattern, phrase_text) for pattern in narrative_patterns):
-            return False
+        if any(re.search(pattern, phrase_text, flags=re.IGNORECASE) for pattern in narrative_patterns):
+             return False
         
-        # 3. Para todas las frases: ser MÁS estricto con palabras sustantivas
-        if len(words) >= 2:
-            # Al menos 70% palabras sustantivas (era 50% o 80%)
+        # 2. Para frases de 3+ palabras, ser más permisivo
+        if len(words) >= 3:
+            # Al menos 60% palabras sustantivas
             substantial_words = sum(1 for word in words if len(word) > 4 and word not in stop_words)
             substantial_ratio = substantial_words / len(words)
             
-            return substantial_ratio >= 0.7  # MÁS ESTRICTO
+            return substantial_ratio >= 0.5  # Más permisivo para frases largas
+        
+        else:  # Bigramas: ser más estricto
+            substantial_words = sum(1 for word in words if len(word) > 4 and word not in stop_words)
+            substantial_ratio = substantial_words / len(words)
+            
+            return substantial_ratio >= 0.8  # Más estricto para bigramas
         
         return False
 
