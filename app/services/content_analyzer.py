@@ -1631,7 +1631,7 @@ class MultilingualContentAnalyzer:
         stop_words = self.get_stop_words(language)
         
         # CAMBIO: Priorizar n-gramas más largos
-        for n in [6, 5, 4, 3, 2]:  # Orden invertido: primero 4-gramas, luego 3, finalmente 2
+        for n in [7, 6, 5, 4, 3, 2]:  # Orden invertido: primero 4-gramas, luego 3, finalmente 2
             for i in range(len(words) - n + 1):
                 ngram_words = words[i:i+n]
                 
@@ -1652,7 +1652,7 @@ class MultilingualContentAnalyzer:
                 coherence_score = self._calculate_phrase_coherence(ngram, content, target_keywords, language)
                 
                 # FILTRO ADICIONAL: Priorizar frases más largas con mejor coherencia
-                if coherence_score > 0.4:  # Umbral más bajo para compensar longitud
+                if coherence_score > 0.3:  # Umbral más bajo para compensar longitud
                     # Score final combina frecuencia, longitud y coherencia
                     final_score = weighted_count * coherence_score
                     coherent_ngrams[ngram] = final_score
