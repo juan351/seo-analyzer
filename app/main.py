@@ -257,7 +257,9 @@ def keyword_suggestions():
 def analyze_competitors():
     """Endpoint con datos reales de competidores"""
     try:
+        logger.info("Iniciando análisis de competidores con datos reales")
         data = request.get_json()
+        logger.info(f"Datos recibidos: {data}")
         
         if not validate_request(data, ['keywords', 'my_domain']):
             return jsonify({'error': 'Missing required fields'}), 400
