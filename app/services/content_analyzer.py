@@ -751,22 +751,36 @@ class MultilingualContentAnalyzer:
         return min(round(score), 100)
    
     
-    def extract_semantic_terms(self, content, language, target_keywords, max_terms=25):  # AUMENTAR
-        """Devolver más términos con sistema de prioridades"""
-        
-        # NIVEL 1: Algoritmo base con más términos
-        base_terms = self._extract_terms_universal_algorithm(content, language, target_keywords, max_terms * 2)
-        
-        # NIVEL 2: Enhancement con Sentence Transformers
-        if self.semantic_model_available and len(base_terms) > 0:
-            enhanced_terms = self._enhance_with_sentence_transformers(
-                base_terms, content, language, target_keywords
-            )
-        else:
-            enhanced_terms = base_terms
-        
-        # NIVEL 3: Clasificar por prioridades y devolver MÁS términos
-        return self._categorize_and_expand_terms(enhanced_terms, max_terms)
+    def extract_semantic_terms(self, content, language, target_keywords, max_terms=25):
+        """Extractor probado: menos restrictivo y compatible con tu pipeline actual"""
+        clean_content = re.sub(r'[^\w\s]', ' ', content.lower())
+        words = clean_content.split()
+
+        # Stopwords + técnicas
+        stop_words = self.get_stop_words(language)
+        technical_stops = self._get_additional_stop_words(language)
+        all_stop_words = stop_words.union(technical_stops)
+
+        # Filtrado inteligente
+        significant_words = []
+        for word in words:
+            if (
+                len(word) > 3
+                and word not in all_stop_words
+                and not any(keyword.lower() in word.lower() for keyword in target_keywords)
+                and not self._is_technical_junk(word)
+            ):
+                significant_words.append(word)
+
+        word_freq = Counter(significant_words)
+
+        # Quality gating
+        quality_terms = {}
+        for word, count in word_freq.most_common(max_terms * 3):
+            if count >= 2 and self._calculate_word_quality(word, content) > 0.4:
+                quality_terms[word] = count
+
+        return dict(sorted(quality_terms.items(), key=lambda x: x[1], reverse=True)[:max_terms])
 
     def _categorize_and_expand_terms(self, terms, max_terms):
         """Clasificar términos por prioridad estilo Surfer"""
