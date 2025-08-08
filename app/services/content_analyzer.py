@@ -317,6 +317,11 @@ class MultilingualContentAnalyzer:
                 if body:
                     content = body.get_text(strip=True)
             
+            # Si sigue siendo poco, usar fallback con Selenium
+            if len(content or "") < 200:
+                logger.info("🔄 Fallback a Selenium para scrapear contenido")
+                content = self._scrape_with_selenium_fallback(url)
+            
             # Limpiar y normalizar
             content = re.sub(r'\s+', ' ', content)
             content = content.strip()
@@ -368,6 +373,14 @@ class MultilingualContentAnalyzer:
             content = re.sub(r'\s+', ' ', content)[:2000]  # Máximo 2000 caracteres
             
             logger.info(f"✅ Contenido extraído: {len(content)} caracteres")
+
+            # Si sigue siendo poco, Selenium
+            if len(content) < 200:
+                logger.info("🔄 Fast: Fallback a Selenium por contenido insuficiente")
+                selenium_content = self._scrape_with_selenium_fallback(url)
+                if len(selenium_content) > len(content):
+                    content = selenium_content[:4000]
+
             return content
             
         except Exception as e:
@@ -1038,9 +1051,11 @@ class MultilingualContentAnalyzer:
                 }
         
         # Procesar n-gramas
+        competitor_count = len(competitors_content)
+        min_users_required = 2 if competitor_count >= 2 else 1
         ngram_stats = {}
         for ngram, counts in all_ngrams.items():
-            if counts and len([c for c in counts if c > 0]) >= 2:  # Al menos 2 competidores lo usan
+            if counts and len([c for c in counts if c > 0]) >= min_users_required:  # Al menos 2 competidores lo usan
                 avg_count = sum(counts) / len(counts)
                 ngram_stats[ngram] = {
                     'avg_count': avg_count,
@@ -1057,6 +1072,16 @@ class MultilingualContentAnalyzer:
             'avg_total_terms': avg_total_terms,
             'competitors_analyzed': len(competitors_content)
         }
+    
+    def _scrape_with_selenium_fallback(self, url):
+        """Intentar scrapear el contenido con Selenium si BS4 no logra suficiente texto"""
+        try:
+            from ..services.serp_scraper import MultilingualSerpScraper
+            scraper = MultilingualSerpScraper(self.cache)
+            return scraper.get_page_content_selenium(url)
+        except Exception as e:
+            logger.info(f"Fallback Selenium falló para {url}: {e}")
+            return ""
 
     def analyze_content_terms(self, content, language):
         """Analizar términos en el contenido actual"""

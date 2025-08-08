@@ -289,6 +289,88 @@ class MultilingualSerpScraper:
             logger.info(f"❌ Error configurando driver: {e}")
             self.driver = None
 
+    def get_page_content_selenium(self, url, selectors=None, timeout=20, max_scrolls=2):
+        """Cargar una URL con Selenium y extraer el contenido principal como texto limpio"""
+        try:
+            self.setup_driver()
+            if not self.driver:
+                logger.info("❌ Selenium driver no disponible para page scraping")
+                return ""
+
+            self.enforce_rate_limit('selenium_page')
+            logger.info(f"🌐 Selenium cargando página de contenido: {url}")
+            self.driver.get(url)
+
+            try:
+                WebDriverWait(self.driver, timeout).until(
+                    EC.presence_of_element_located((By.TAG_NAME, "body"))
+                )
+            except TimeoutException:
+                logger.info("⚠️ Timeout esperando body en Selenium")
+                return ""
+
+            # Scrolls leves para cargar contenido lazy
+            for _ in range(max_scrolls):
+                try:
+                    self.driver.execute_script("window.scrollBy(0, Math.floor(window.innerHeight * 0.8));")
+                    time.sleep(1.0)
+                except Exception:
+                    break
+
+            # Simular algo de comportamiento humano
+            try:
+                self.simulate_human_behavior()
+            except Exception:
+                pass
+
+            html = self.driver.page_source
+            if not html:
+                return ""
+
+            soup = BeautifulSoup(html, 'html.parser')
+
+            # Limpieza básica
+            for tag in soup(["script", "style", "nav", "header", "footer", "aside"]):
+                tag.decompose()
+
+            # Selectores de contenido principal
+            sel = selectors or [
+                'article',
+                '[role="main"]',
+                '.content',
+                '.post-content',
+                '.entry-content',
+                '.main-content',
+                'main',
+                '.container'
+            ]
+
+            content = ""
+            for selector in sel:
+                try:
+                    elements = soup.select(selector)
+                    if elements:
+                        for el in elements:
+                            text = el.get_text(strip=True)
+                            if len(text) > len(content):
+                                content = text
+                        if len(content) > 400:
+                            break
+                except Exception:
+                    continue
+
+            if len(content) < 150:
+                # Fallback al body
+                body = soup.find('body')
+                if body:
+                    content = body.get_text(strip=True)
+
+            content = re.sub(r'\s+', ' ', content or '').strip()
+            logger.info(f"🧩 Selenium extrajo {len(content)} caracteres de contenido")
+            return content
+        except Exception as e:
+            logger.info(f"❌ Error get_page_content_selenium: {e}")
+            return ""
     
     def get_random_realistic_user_agent(self):
         """User agents ultra-realistas y actualizados"""
