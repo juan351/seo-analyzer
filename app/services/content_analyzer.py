@@ -3546,6 +3546,6 @@ class MultilingualContentAnalyzer:
             if 0.001 <= frequency <= 0.025:
                 score += 0.3
             elif frequency > 0: 
-            score += 0.1
+                score += 0.1
         
         return min(score, 1.0)
