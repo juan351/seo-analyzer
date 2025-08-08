@@ -2197,7 +2197,7 @@ class MultilingualContentAnalyzer:
             return {'error': str(e)}
 
     def analyze_terms_from_real_competitors(self, my_content, keywords, competitors_content, language):
-        """Análisis de términos mejorado manteniendo la estructura actual"""
+        """Análisis de términos mejorado - CORREGIDO: frecuencias promedio"""
         logger.info("🔍 Iniciando análisis de términos mejorado")
         
         try:
@@ -2227,35 +2227,54 @@ class MultilingualContentAnalyzer:
                     'priority': 'high' if my_count < avg_comp_count * 0.5 else 'medium'
                 })
             
-            # MEJORAR análisis semántico con filtrado de calidad
+            # CORREGIR: Calcular frecuencias PROMEDIO por término semántico
             semantic_analysis = []
-            for term, comp_frequency in semantic_terms.items():
+            for term, total_frequency in semantic_terms.items():  # total_frequency era la suma total
                 my_count = self.count_term_in_content(my_content, term, language)
                 
+                # CALCULAR FRECUENCIA REAL POR COMPETIDOR
+                individual_counts = []
+                for comp in competitors_content:
+                    term_count = self.count_term_in_content(comp['content'], term, language)
+                    individual_counts.append(term_count)
+                
+                # PROMEDIO REAL (no suma total)
+                avg_comp_frequency = sum(individual_counts) / len(individual_counts) if individual_counts else 0
+                
                 # AGREGAR validación de calidad
-                if comp_frequency >= 3:
+                if avg_comp_frequency >= 2:  # Promedio >= 2 (era total >= 3)
                     quality_score = self._calculate_word_quality(term, all_competitor_text)
                     if quality_score > 0.4:  # Solo términos de calidad
                         semantic_analysis.append({
                             'term': term,
                             'type': 'semantic_term',
                             'current_count': my_count,
-                            'competitor_average': comp_frequency,
-                            'recommended_count': max(1, int(comp_frequency * 0.7)),
-                            'priority': 'high' if my_count == 0 and comp_frequency >= 5 else 'medium'
+                            'competitor_average': round(avg_comp_frequency, 1),  # PROMEDIO
+                            'recommended_count': max(1, int(avg_comp_frequency * 0.8)),
+                            'priority': 'high' if my_count == 0 and avg_comp_frequency >= 3 else 'medium'
                         })
             
-            # Mantener resto del código actual...
+            # CORREGIR: Calcular frecuencias PROMEDIO por n-grama
             ngram_analysis = []
-            for ngram, comp_frequency in important_ngrams.items():
+            for ngram, total_frequency in important_ngrams.items():  # total_frequency era la suma total
                 my_count = self.count_term_in_content(my_content, ngram, language)
-                if comp_frequency >= 2:
+                
+                # CALCULAR FRECUENCIA REAL POR COMPETIDOR
+                individual_counts = []
+                for comp in competitors_content:
+                    ngram_count = self.count_term_in_content(comp['content'], ngram, language)
+                    individual_counts.append(ngram_count)
+                
+                # PROMEDIO REAL (no suma total)
+                avg_comp_frequency = sum(individual_counts) / len(individual_counts) if individual_counts else 0
+                
+                if avg_comp_frequency >= 1:  # Promedio >= 1 (era total >= 2)
                     ngram_analysis.append({
                         'term': ngram,
                         'type': 'ngram',
                         'current_count': my_count,
-                        'competitor_average': comp_frequency,
-                        'recommended_count': max(1, comp_frequency),
+                        'competitor_average': round(avg_comp_frequency, 1),  # PROMEDIO
+                        'recommended_count': max(1, int(avg_comp_frequency)),
                         'priority': 'medium' if my_count == 0 else 'low'
                     })
             
