@@ -561,7 +561,7 @@ class MultilingualContentAnalyzer:
             # Remover la keyword principal para encontrar términos relacionados
             all_text = all_text.replace(main_keyword.lower(), '')
             
-            lang = language or self.language_detector.detect_language(all_text) or 'en'
+            lang = self.language_detector.detect_language(all_text) or 'en'
             if lang in ('es', 'pt', 'it', 'fr', 'de'):
                 words = re.findall(r'\b[a-záéíóúüñçàèìòùäëïöüß]+\b', all_text, flags=re.IGNORECASE)
             else:
