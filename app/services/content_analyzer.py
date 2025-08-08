@@ -1024,7 +1024,7 @@ class MultilingualContentAnalyzer:
             'content_cleaned': clean_content
         }
 
-    def extract_semantic_terms(self, content, language, target_keywords, max_terms=35):  # AUMENTAR
+    def extract_semantic_terms(self, content, language, target_keywords, max_terms=25):  # AUMENTAR
         """Devolver más términos con sistema de prioridades"""
         
         # NIVEL 1: Algoritmo base con más términos
@@ -1045,18 +1045,18 @@ class MultilingualContentAnalyzer:
         """Clasificar términos por prioridad estilo Surfer"""
         
         categorized = {
-            'high_priority': {},     # 12-15 términos
-            'medium_priority': {},   # 15-18 términos  
-            'low_priority': {}       # 8-12 términos
+            'high_priority': {},     # 8-10 términos
+            'medium_priority': {},   # 10-12 términos  
+            'low_priority': {}       # 5-8 términos
         }
         
         for term, frequency in terms.items():
             # Criterios para clasificación
             term_length = len(term)
             
-            if frequency >= 4 and term_length >= 5:
+            if frequency >= 5 and term_length >= 6:
                 categorized['high_priority'][term] = frequency
-            elif frequency >= 2 and term_length >= 4:
+            elif frequency >= 3 and term_length >= 5:
                 categorized['medium_priority'][term] = frequency  
             elif frequency >= 2:
                 categorized['low_priority'][term] = frequency
@@ -1064,14 +1064,14 @@ class MultilingualContentAnalyzer:
         # Combinar manteniendo balance
         final_terms = {}
         
-        # Tomar hasta 15 high priority
+        # Tomar hasta 10 high priority
         high_terms = dict(sorted(categorized['high_priority'].items(), 
-                            key=lambda x: x[1], reverse=True)[:15])
+                            key=lambda x: x[1], reverse=True)[:10])
         final_terms.update(high_terms)
         
-        # Tomar hasta 18 medium priority  
+        # Tomar hasta 12 medium priority  
         medium_terms = dict(sorted(categorized['medium_priority'].items(), 
-                                key=lambda x: x[1], reverse=True)[:18])
+                                key=lambda x: x[1], reverse=True)[:12])
         final_terms.update(medium_terms)
         
         # Completar con low priority hasta llegar a max_terms
@@ -1379,7 +1379,7 @@ class MultilingualContentAnalyzer:
         stop_words = self.get_stop_words(language)
         
         # CAMBIO: Priorizar n-gramas más largos
-        for n in [6, 5, 4, 3, 2]:  # Orden invertido: primero 6-gramas, luego 5, 4 , 3, 2
+        for n in [6, 5, 4, 3, 2]:  # Orden invertido: primero 4-gramas, luego 3, finalmente 2
             for i in range(len(words) - n + 1):
                 ngram_words = words[i:i+n]
                 
@@ -1400,13 +1400,13 @@ class MultilingualContentAnalyzer:
                 coherence_score = self._calculate_phrase_coherence(ngram, content, target_keywords, language)
                 
                 # FILTRO ADICIONAL: Priorizar frases más largas con mejor coherencia
-                if coherence_score > 0.3:  # Umbral más bajo para compensar longitud
+                if coherence_score > 0.4:  # Umbral más bajo para compensar longitud
                     # Score final combina frecuencia, longitud y coherencia
                     final_score = weighted_count * coherence_score
                     coherent_ngrams[ngram] = final_score
         
         # Ordenar por score final y tomar los mejores
-        return dict(sorted(coherent_ngrams.items(), key=lambda x: x[1], reverse=True)[:40])
+        return dict(sorted(coherent_ngrams.items(), key=lambda x: x[1], reverse=True)[:25])
     
     def _is_coherent_phrase(self, words, stop_words, target_keywords, language):
         """Verificar coherencia semántica con bonus para frases más largas"""
@@ -3512,8 +3512,8 @@ class MultilingualContentAnalyzer:
             
             return {
                 'keywords': keyword_analysis,
-                'semantic_terms': semantic_analysis[:20],
-                'ngrams': ngram_analysis[:12], 
+                'semantic_terms': semantic_analysis[:30],
+                'ngrams': ngram_analysis[:20], 
                 'content_analysis': {
                     'my_word_count': my_word_count,
                     'competitor_avg_words': int(avg_competitor_words),
@@ -3533,7 +3533,7 @@ class MultilingualContentAnalyzer:
         if 5 <= len(word) <= 12:
             score += 0.5
         elif 4 <= len(word) <= 15:
-            score += 0.4
+            score += 0.3
         
         # Proporción de letras
         if sum(c.isalpha() for c in word) / len(word) >= 0.8:
@@ -3543,9 +3543,7 @@ class MultilingualContentAnalyzer:
         content_words = full_content.lower().split()
         if content_words:
             frequency = content_words.count(word) / len(content_words)
-            if 0.001 <= frequency <= 0.025:
-                score += 0.3
-            elif frequency > 0: 
-                score += 0.1
+            if 0.002 <= frequency <= 0.02:
+                score += 0.2
         
         return min(score, 1.0)
