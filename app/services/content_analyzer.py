@@ -336,10 +336,10 @@ class MultilingualContentAnalyzer:
             logger.info(f"Error scrapeando {url}: {e}")
             return ""
 
-    def scrape_content_fast(self, url, timeout=8):
-        """Scraping rápido y seguro"""
+    def scrape_content_fast(self, url, timeout=12):  # Aumentar timeout
+        """Scraping completo sin truncar - ESTILO SURFER"""
         try:
-            logger.info(f"🕷️ Scrapeando rápido: {url}")
+            logger.info(f"🕷️ Scrapeando completo: {url}")
             
             response = requests.get(url, headers=self.headers, timeout=timeout)
             response.raise_for_status()
@@ -349,38 +349,41 @@ class MultilingualContentAnalyzer:
             soup = BeautifulSoup(response.content, 'html.parser')
             
             # Limpieza básica
-            for tag in soup(["script", "style", "nav", "header", "footer"]):
+            for tag in soup(["script", "style", "nav", "header", "footer", "aside", "form", "iframe"]):
                 tag.decompose()
             
-            # Buscar contenido principal
-            main_selectors = ['article', 'main', '.content', '.post-content']
+            # Buscar contenido principal - MÁS SELECTORES
+            main_selectors = [
+                'article', 
+                'main', 
+                '.content', 
+                '.post-content', 
+                '.entry-content',
+                '.article-content',
+                '.blog-content',
+                '.single-content',
+                '[role="main"]'
+            ]
             content = ""
             
             for selector in main_selectors:
                 element = soup.select_one(selector)
                 if element:
                     content = element.get_text(strip=True)
-                    if len(content) > 100:
+                    if len(content) > 500:  # Mínimo contenido sustancial
                         break
             
             # Fallback al body completo
-            if len(content) < 100:
+            if len(content) < 500:
                 body = soup.find('body')
                 if body:
                     content = body.get_text(strip=True)
             
-            # Limpiar y limitar
-            content = re.sub(r'\s+', ' ', content)[:2000]  # Máximo 2000 caracteres
+            # Limpiar PERO NO TRUNCAR
+            content = re.sub(r'\s+', ' ', content)
+            content = content.strip()
             
-            logger.info(f"✅ Contenido extraído: {len(content)} caracteres")
-
-            # Si sigue siendo poco, Selenium
-            if len(content) < 200:
-                logger.info("🔄 Fast: Fallback a Selenium por contenido insuficiente")
-                selenium_content = self._scrape_with_selenium_fallback(url)
-                if len(selenium_content) > len(content):
-                    content = selenium_content[:4000]
-
+            logger.info(f"✅ Contenido extraído COMPLETO: {len(content)} caracteres, {len(content.split())} palabras")
             return content
             
         except Exception as e:
@@ -2197,26 +2200,34 @@ class MultilingualContentAnalyzer:
             return {'error': str(e)}
 
     def analyze_terms_from_real_competitors(self, my_content, keywords, competitors_content, language):
-        """Análisis de términos mejorado - CORREGIDO: frecuencias promedio"""
+        """Análisis de términos mejorado - CRITERIOS ESTILO SURFER"""
         logger.info("🔍 Iniciando análisis de términos mejorado")
         
         try:
             # Mantener lógica actual
             all_competitor_text = " ".join([comp['content'] for comp in competitors_content])
             
-            # ESTRATEGIA HÍBRIDA (las funciones mejoradas automáticamente usarán los 3 niveles)
+            # ESTRATEGIA HÍBRIDA 
             logger.info("🔍 Llamando extract_semantic_terms...")
             semantic_terms = self.extract_semantic_terms(all_competitor_text, language, keywords, max_terms=25)
             logger.info(f"🔍 Términos extraídos: {len(semantic_terms)}")
             logger.info(f"🔍 Términos: {list(semantic_terms.keys())[:10]}")
             important_ngrams = self.extract_important_ngrams(all_competitor_text, language, keywords)
             
-            # Mantener análisis de keywords actual
+            # Keywords principales
             keyword_analysis = []
             for keyword in keywords:
                 my_count = self.count_term_in_content(my_content, keyword, language)
                 comp_counts = [self.count_term_in_content(comp['content'], keyword, language) for comp in competitors_content]
                 avg_comp_count = sum(comp_counts) / len(comp_counts) if comp_counts else 2
+                
+                # CRITERIOS SURFER PARA KEYWORDS
+                if my_count < avg_comp_count * 0.7:  # Falta más del 30%
+                    priority = 'high'
+                elif my_count < avg_comp_count * 0.9:  # Falta más del 10%
+                    priority = 'medium'
+                else:
+                    priority = 'low'
                 
                 keyword_analysis.append({
                     'term': keyword,
@@ -2224,61 +2235,82 @@ class MultilingualContentAnalyzer:
                     'current_count': my_count,
                     'competitor_average': round(avg_comp_count, 1),
                     'recommended_count': max(2, int(avg_comp_count)),
-                    'priority': 'high' if my_count < avg_comp_count * 0.5 else 'medium'
+                    'priority': priority
                 })
             
-            # CORREGIR: Calcular frecuencias PROMEDIO por término semántico
+            # Términos semánticos con criterios SURFER
             semantic_analysis = []
-            for term, total_frequency in semantic_terms.items():  # total_frequency era la suma total
+            for term, total_frequency in semantic_terms.items():
                 my_count = self.count_term_in_content(my_content, term, language)
                 
-                # CALCULAR FRECUENCIA REAL POR COMPETIDOR
+                # Calcular frecuencia real por competidor
                 individual_counts = []
                 for comp in competitors_content:
                     term_count = self.count_term_in_content(comp['content'], term, language)
                     individual_counts.append(term_count)
                 
-                # PROMEDIO REAL (no suma total)
                 avg_comp_frequency = sum(individual_counts) / len(individual_counts) if individual_counts else 0
                 
-                # AGREGAR validación de calidad
-                if avg_comp_frequency >= 2:  # Promedio >= 2 (era total >= 3)
+                # CRITERIOS SURFER MÁS ESTRICTOS
+                if avg_comp_frequency >= 3:  # Solo términos usados significativamente
                     quality_score = self._calculate_word_quality(term, all_competitor_text)
-                    if quality_score > 0.4:  # Solo términos de calidad
+                    if quality_score > 0.4:
+                        
+                        # PRIORIDADES ESTILO SURFER
+                        gap_ratio = (avg_comp_frequency - my_count) / avg_comp_frequency if avg_comp_frequency > 0 else 0
+                        
+                        if my_count == 0 and avg_comp_frequency >= 5:
+                            priority = 'high'  # Término ausente e importante
+                        elif gap_ratio >= 0.6:  # Falta más del 60%
+                            priority = 'high'
+                        elif gap_ratio >= 0.3:  # Falta más del 30%
+                            priority = 'medium'
+                        else:
+                            priority = 'low'
+                        
                         semantic_analysis.append({
                             'term': term,
                             'type': 'semantic_term',
                             'current_count': my_count,
-                            'competitor_average': round(avg_comp_frequency, 1),  # PROMEDIO
+                            'competitor_average': round(avg_comp_frequency, 1),
                             'recommended_count': max(1, int(avg_comp_frequency * 0.8)),
-                            'priority': 'high' if my_count == 0 and avg_comp_frequency >= 3 else 'medium'
+                            'priority': priority,
+                            'gap_percentage': round(gap_ratio * 100, 1)  # Para debug
                         })
             
-            # CORREGIR: Calcular frecuencias PROMEDIO por n-grama
+            # N-gramas con criterios SURFER
             ngram_analysis = []
-            for ngram, total_frequency in important_ngrams.items():  # total_frequency era la suma total
+            for ngram, total_frequency in important_ngrams.items():
                 my_count = self.count_term_in_content(my_content, ngram, language)
                 
-                # CALCULAR FRECUENCIA REAL POR COMPETIDOR
                 individual_counts = []
                 for comp in competitors_content:
                     ngram_count = self.count_term_in_content(comp['content'], ngram, language)
                     individual_counts.append(ngram_count)
                 
-                # PROMEDIO REAL (no suma total)
                 avg_comp_frequency = sum(individual_counts) / len(individual_counts) if individual_counts else 0
                 
-                if avg_comp_frequency >= 1:  # Promedio >= 1 (era total >= 2)
+                # CRITERIOS SURFER PARA N-GRAMAS
+                if avg_comp_frequency >= 2:  # Solo frases usadas consistentemente
+                    gap_ratio = (avg_comp_frequency - my_count) / avg_comp_frequency if avg_comp_frequency > 0 else 0
+                    
+                    if my_count == 0 and avg_comp_frequency >= 3:
+                        priority = 'high'
+                    elif gap_ratio >= 0.5:
+                        priority = 'medium'
+                    else:
+                        priority = 'low'
+                    
                     ngram_analysis.append({
                         'term': ngram,
                         'type': 'ngram',
                         'current_count': my_count,
-                        'competitor_average': round(avg_comp_frequency, 1),  # PROMEDIO
+                        'competitor_average': round(avg_comp_frequency, 1),
                         'recommended_count': max(1, int(avg_comp_frequency)),
-                        'priority': 'medium' if my_count == 0 else 'low'
+                        'priority': priority
                     })
             
-            # Mantener estructura de respuesta actual
+            # Mantener estructura de respuesta
             my_word_count = len(my_content.split())
             competitor_word_counts = [len(comp['content'].split()) for comp in competitors_content]
             avg_competitor_words = sum(competitor_word_counts) / len(competitor_word_counts) if competitor_word_counts else 1000
