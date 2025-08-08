@@ -1085,35 +1085,37 @@ class MultilingualContentAnalyzer:
     
 
     def _extract_terms_universal_algorithm(self, content, language, target_keywords, max_terms):
-        """NIVEL 1: Algoritmo universal mejorado (reemplaza _extract_terms_technical_algorithm)"""
+        """NIVEL 1: Algoritmo universal mejorado - RESTAURADO"""
         
         clean_content = re.sub(r'[^\w\s]', ' ', content.lower())
         words = clean_content.split()
         
-        # Filtrado técnico básico
+        # Usar stop words existentes + técnicas (RESTAURADO)
         stop_words = self.get_stop_words(language)
+        technical_stops = self._get_additional_stop_words(language)
+        all_stop_words = stop_words.union(technical_stops)
         
-        technically_valid = [
-            word for word in words 
-            if len(word) > 3 and word not in stop_words 
-            and not any(kw.lower() in word.lower() for kw in target_keywords)
-            and not self._is_technical_junk_universal(word)
-        ]
+        # Filtrado inteligente completo (RESTAURADO)
+        significant_words = []
+        for word in words:
+            if (len(word) > 3 and 
+                word not in all_stop_words and 
+                not any(keyword.lower() in word.lower() for keyword in target_keywords) and
+                not self._is_technical_junk(word)):
+                significant_words.append(word)
         
-        word_freq = Counter(technically_valid)
+        word_freq = Counter(significant_words)
         
-        # FILTRADO SEMÁNTICO UNIVERSAL (NUEVO)
-        semantic_terms = {}
-        for word, count in word_freq.most_common(max_terms * 4):
-            if count >= 3:
-                # Extraer contextos
-                contexts = self._extract_term_contexts_detailed(content, word, window=8)
-                
-                # Aplicar filtrado semántico universal
-                if self._is_semantically_valuable_universal(word, contexts, language):
-                    semantic_terms[word] = count
+        # MEJORAR filtrado por calidad (RESTAURADO)
+        quality_terms = {}
+        for word, count in word_freq.most_common(max_terms * 3):
+            if count >= 2:
+                # NUEVA lógica de calidad (RESTAURADO)
+                if self._calculate_word_quality(word, content) > 0.4:
+                    quality_terms[word] = count
         
-        return dict(sorted(semantic_terms.items(), key=lambda x: x[1], reverse=True)[:max_terms])
+        # Mantener el return original (RESTAURADO)
+        return dict(sorted(quality_terms.items(), key=lambda x: x[1], reverse=True)[:max_terms])
     
     
 
