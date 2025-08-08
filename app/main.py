@@ -273,7 +273,7 @@ def analyze_competitors():
             analysis = content_analyzer.analyze_competitors_with_terms(keywords, my_domain, content)
         else:
             analysis = content_analyzer.analyze_competitors(keywords, my_domain)
-        
+        logger.info(f"Análisis completado: {analysis}")
         if analysis.get('error'):
             return jsonify({'error': analysis['error']}), 500
         
