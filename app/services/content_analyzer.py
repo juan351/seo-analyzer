@@ -2214,59 +2214,35 @@ class MultilingualContentAnalyzer:
             logger.info(f"🔍 Términos: {list(semantic_terms.keys())[:10]}")
             important_ngrams = self.extract_important_ngrams(all_competitor_text, language, keywords)
             
-            # Keywords principales
-            keyword_analysis = []
-            for keyword in keywords:
-                my_count = self.count_term_in_content(my_content, keyword, language)
-                comp_counts = [self.count_term_in_content(comp['content'], keyword, language) for comp in competitors_content]
-                avg_comp_count = sum(comp_counts) / len(comp_counts) if comp_counts else 2
-                
-                # CRITERIOS SURFER PARA KEYWORDS
-                if my_count < avg_comp_count * 0.7:  # Falta más del 30%
-                    priority = 'high'
-                elif my_count < avg_comp_count * 0.9:  # Falta más del 10%
-                    priority = 'medium'
-                else:
-                    priority = 'low'
-                
-                keyword_analysis.append({
-                    'term': keyword,
-                    'type': 'primary_keyword',
-                    'current_count': my_count,
-                    'competitor_average': round(avg_comp_count, 1),
-                    'recommended_count': max(2, int(avg_comp_count)),
-                    'priority': priority
-                })
-            
-            # Términos semánticos con criterios SURFER
             semantic_analysis = []
             for term, total_frequency in semantic_terms.items():
                 my_count = self.count_term_in_content(my_content, term, language)
                 
                 # Calcular frecuencia real por competidor
                 individual_counts = []
+                competitors_using_term = 0
                 for comp in competitors_content:
                     term_count = self.count_term_in_content(comp['content'], term, language)
                     individual_counts.append(term_count)
+                    if term_count > 0:
+                        competitors_using_term += 1
                 
                 avg_comp_frequency = sum(individual_counts) / len(individual_counts) if individual_counts else 0
+                usage_rate = competitors_using_term / len(competitors_content)  # % de competidores que lo usan
                 
-                # CRITERIOS SURFER MÁS ESTRICTOS
-                if avg_comp_frequency >= 3:  # Solo términos usados significativamente
+                if avg_comp_frequency >= 3:
                     quality_score = self._calculate_word_quality(term, all_competitor_text)
                     if quality_score > 0.4:
                         
-                        # PRIORIDADES ESTILO SURFER
-                        gap_ratio = (avg_comp_frequency - my_count) / avg_comp_frequency if avg_comp_frequency > 0 else 0
-                        
-                        if my_count == 0 and avg_comp_frequency >= 5:
-                            priority = 'high'  # Término ausente e importante
-                        elif gap_ratio >= 0.6:  # Falta más del 60%
-                            priority = 'high'
-                        elif gap_ratio >= 0.3:  # Falta más del 30%
-                            priority = 'medium'
+                        # PRIORIDAD BASADA EN IMPORTANCIA COMPETITIVA
+                        if usage_rate >= 0.75 and avg_comp_frequency >= 8:  # 75%+ competidores, alta frecuencia
+                            priority = 'high'    # Término CRÍTICO del tópico
+                        elif usage_rate >= 0.5 and avg_comp_frequency >= 5:   # 50%+ competidores, buena frecuencia  
+                            priority = 'medium'  # Término IMPORTANTE del tópico
+                        elif usage_rate >= 0.5 and avg_comp_frequency >= 3:   # 50%+ competidores, frecuencia mínima
+                            priority = 'medium'  # Término RELEVANTE del tópico
                         else:
-                            priority = 'low'
+                            priority = 'low'     # Término poco consistente
                         
                         semantic_analysis.append({
                             'term': term,
@@ -2275,7 +2251,8 @@ class MultilingualContentAnalyzer:
                             'competitor_average': round(avg_comp_frequency, 1),
                             'recommended_count': max(1, int(avg_comp_frequency * 0.8)),
                             'priority': priority,
-                            'gap_percentage': round(gap_ratio * 100, 1)  # Para debug
+                            'competitors_using': f"{competitors_using_term}/{len(competitors_content)}",  # Debug info
+                            'usage_rate': round(usage_rate * 100, 1)  # Debug info
                         })
             
             # N-gramas con criterios SURFER
