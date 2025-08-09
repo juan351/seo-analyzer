@@ -2250,9 +2250,7 @@ class MultilingualContentAnalyzer:
                             'current_count': my_count,
                             'competitor_average': round(avg_comp_frequency, 1),
                             'recommended_count': max(1, int(avg_comp_frequency * 0.8)),
-                            'priority': priority,
-                            'competitors_using': f"{competitors_using_term}/{len(competitors_content)}",  # Debug info
-                            'usage_rate': round(usage_rate * 100, 1)  # Debug info
+                            'priority': priority                            
                         })
             
             # N-gramas con criterios SURFER
